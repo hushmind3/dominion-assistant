@@ -11,6 +11,7 @@ from mobile_gateway import MobileAccess
 from attachments import AttachmentStore, Vision, IMAGE_MIME
 from assistant_memory import DEFAULT_PROFILE, validate_profile, context as memory_context
 from direct_chat import DirectChat
+from cloud_link import CloudLink
 import uuid
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -345,6 +346,7 @@ class Conversation:
 
 conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ == '__main__' else None)
 mobile_access = MobileAccess(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'mobile-access.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
+cloud_link = CloudLink(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'cloud-link.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
 phone_lock = threading.RLock()
 phone_config = None
 mobile_voice_config = None
@@ -543,7 +545,10 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     def mobile_auth(self):
-        return mobile_access.authorized(self.headers.get('Authorization', '')) and self.headers.get('Origin') is None
+        if self.headers.get('Origin') is not None:return False
+        local=self.headers.get('X-Assistant-Cloud-Local','')
+        if self.client_address[0]=='127.0.0.1' and hmac.compare_digest(local,cloud_link.internal):return True
+        return mobile_access.authorized(self.headers.get('Authorization', ''))
 
     def do_GET(self):
         if not self.local_host():
@@ -661,7 +666,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {"error": "Local session required"})
                 return
             data = self.body()
-            if self.path == '/mobile-admin/chat-config':
+            if self.path == '/mobile-admin/cloud-start':
+                self.reply(200,cloud_link.start())
+            elif self.path == '/mobile-admin/cloud-login-status':
+                self.reply(200,cloud_link.login_status())
+            elif self.path == '/mobile-admin/cloud-register':
+                self.reply(200,cloud_link.register(data.get('name'),data.get('confirmed')))
+            elif self.path == '/mobile-admin/cloud-status':
+                self.reply(200,cloud_link.status())
+            elif self.path == '/mobile-admin/cloud-disable':
+                self.reply(200,cloud_link.disable())
+            elif self.path == '/mobile-admin/chat-config':
                 conversation.chat_client.configure(data)
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/chat-disable':
@@ -734,4 +749,5 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DOMINION bridge credential required")
     threading.Thread(target=conversation.direct_worker,daemon=True).start()
+    threading.Thread(target=cloud_link.worker,daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
