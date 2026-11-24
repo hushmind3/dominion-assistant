@@ -1,17 +1,12 @@
 name: Publish OCI plugin
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'Dockerfile'
-      - 'app.py'
-      - 'plugin_sdk.py'
-      - 'voice.py'
-      - 'session.py'
-      - 'index.html'
-      - 'app.js'
-      - '.github/workflows/publish-plugin.yml'
   workflow_dispatch:
+    inputs:
+      approved:
+        description: 'Product complete and release explicitly approved by owner'
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: write
   packages: write
@@ -22,7 +17,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    if: github.repository == 'hushmind3/dominion-assistant' && github.ref == 'refs/heads/main'
+    if: inputs.approved == true && (github.repository == 'hushmind3/dominion-assistant' && github.ref == 'refs/heads/main')
     steps:
       - uses: actions/checkout@v6
       - name: Test and build

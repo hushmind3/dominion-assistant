@@ -1,8 +1,12 @@
 name: Assistant Android voice APK
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      approved:
+        description: 'Product complete and release explicitly approved by owner'
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -10,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   apk:
-    if: github.ref == 'refs/heads/main'
+    if: inputs.approved == true && (github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
