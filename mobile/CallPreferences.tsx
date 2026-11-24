@@ -1,0 +1,9 @@
+import React from 'react';
+import {View,Text,Switch,useColorScheme} from 'react-native';
+export type CallPreferences={enabled:boolean;approval:boolean;scheduled:boolean;condition:boolean;quietHours:boolean};
+export const DEFAULT_CALL_PREFERENCES:CallPreferences={enabled:false,approval:false,scheduled:false,condition:false,quietHours:true};
+export default function CallPreferencesPanel({value,onChange}:{value:CallPreferences;onChange:(v:CallPreferences)=>void}){
+ const dark=useColorScheme()==='dark',ink=dark?'#EFF5F0':'#17251D',muted=dark?'#A4B5AA':'#647369',card=dark?'#1D2722':'#FFFFFF',accent=dark?'#A5D5A1':'#286744';
+ const row=(title:string,detail:string,k:keyof CallPreferences,disabled=false)=><View style={{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:8,opacity:disabled?.45:1}}><View style={{flex:1,gap:4}}><Text style={{fontWeight:'600',color:ink}}>{title}</Text><Text style={{color:muted,fontSize:12,lineHeight:18}}>{detail}</Text></View><Switch accessibilityLabel={title} value={value[k]} disabled={disabled} trackColor={{true:accent}} onValueChange={v=>onChange({...value,[k]:v})}/></View>;
+ return <View style={{backgroundColor:card,borderRadius:16,padding:15,gap:8}}><Text style={{color:ink,fontWeight:'700',fontSize:18}}>AI 전화 수신 설정</Text><Text style={{color:muted,fontSize:13,lineHeight:20}}>수신 기능 준비 중 · 아래 선택은 이 기기에 저장되는 사전 설정입니다. 현재 AI가 자동으로 전화를 걸지는 않습니다.</Text>{row('AI 전화 수신 허용','기본 꺼짐. 메시지 알림과 별개의 허용 설정입니다.','enabled')}{row('업무 중 승인 요청','사용자가 허용한 업무의 중요한 승인 요청','approval',!value.enabled)}{row('예약 전화','사용자가 직접 예약한 모닝콜 및 전화','scheduled',!value.enabled)}{row('지정 조건 충족','사용자가 명시적으로 설정한 연락 조건','condition',!value.enabled)}{row('야간 방해 금지','23:00~08:00, 기기 현지 시간 기준','quietHours',!value.enabled)}<Text style={{color:muted,fontSize:12}}>실제 수신은 네이티브 통화 및 서버 권한 검증이 구현된 후 지원됩니다. 사용자가 걸어오는 통화 및 메시지 알림 설정에는 영향을 주지 않습니다.</Text></View>
+}
