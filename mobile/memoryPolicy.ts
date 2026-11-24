@@ -10,7 +10,7 @@ export function learn(mem:Memory[],message:Message):Memory[]{
  const pref=t.match(/^(?:앞으로\s+)?(?:나는|저는|난|내가|제가)\s+(.{1,120}?)(?:을|를|이|가)?\s*(좋아해(?:요)?|싫어해(?:요)?|선호해(?:요)?|안 먹어(?:요)?|못 먹어(?:요)?)\s*[.!]?$/);
  if(pref)key='preference:'+pref[1].trim().replace(/[을를이가]$/,'');
  else if(/^(?:앞으로\s+)?(?:기억해|기억해줘|기억해 줘|기억해라|기억하세요|기억해 주세요)\s*[:： ]/.test(t))key='explicit:'+t.toLowerCase();
- else if(/^(?:내|제)\s*(?:비서 이름|호칭|직업|거주 지역|생일)은?\s+/.test(t))key='fact:'+t.split(/은?\s+/).slice(0,2).join(' ');
+ else {const fact=t.match(/^(?:내|제)\s*(비서 이름|호칭|직업|거주 지역|생일)(?:은|는)\s+(.+)$/);if(fact)key='fact:'+fact[1]}
  if(!key)return mem;
  return [...mem.filter(m=>m.key!==key),{id:message.id,key,text:t,time:message.time,sourceId:message.id}];
 }
@@ -26,7 +26,8 @@ export function context(messages:Message[],memory:Memory[],query:string,excluded
  const picked=messages.filter(m=>m.role==='user'&&m.id!==excluded&&!recentIds.has(m.id)&&safe(m)).map(m=>({m,n:score(q,m.text)})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n||b.m.time-a.m.time).slice(0,8);
  const facts=memory.filter(m=>!sensitive(m.text)).map(m=>({m,n:score(q,m.text)})).filter(x=>x.n>0||x.m.key.startsWith('explicit:')).sort((a,b)=>b.n-a.n||b.m.time-a.m.time).slice(0,8);
  let left=limit;const take=(s:string,n:number)=>{const v=s.slice(0,Math.min(n,Math.max(0,left)));left-=v.length;return v};
- const recentText=recent.slice().reverse().map(m=>({role:m.role,content:take(m.text,1600)})).filter(m=>m.content).reverse();
+ const reserve=picked.length||facts.length?Math.min(4000,Math.floor(limit/3)):0;left=limit-reserve;
+ const recentText=recent.slice().reverse().map(m=>({role:m.role,content:take(m.text,1600)})).filter(m=>m.content).reverse();left+=reserve;
  const recalled=[...facts.map(x=>({type:'user_memory',text:take(x.m.text,400)})),...picked.map(x=>({type:'past_user_message',text:take(x.m.text,500)}))].filter(x=>x.text);
  return {recent:recentText,recalled};
 }

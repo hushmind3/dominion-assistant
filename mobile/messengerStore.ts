@@ -5,10 +5,11 @@ import type {Memory} from './memoryPolicy';
 import {File,Paths} from 'expo-file-system';
 import {digestStringAsync,CryptoDigestAlgorithm} from 'expo-crypto';
 import {openDatabaseAsync,type SQLiteDatabase} from 'expo-sqlite';
-export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string;localOnly?:boolean};
+export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string;localOnly?:boolean;googleJob?:{id:string;operation:import('./googleTools').GoogleTool};jobStatus?:string};
 export type Journal={messages:Message[];model:string;deviceId?:string;profile?:Profile;offlineRecognition?:boolean;callPreferences?:CallPreferences;voice?:VoicePreference;memory?:Memory[];memoryEnabled?:boolean};
 const empty=():Journal=>({messages:[],model:'dominion/free-auto'});
 const opened=new Map<string,Promise<SQLiteDatabase>>();
+const persisted=new Map<string,Journal>();
 async function db(account:string){
  let pending=opened.get(account);if(!pending){pending=(async()=>{
  const hash=await digestStringAsync(CryptoDigestAlgorithm.SHA256,account);
@@ -42,7 +43,8 @@ async function write(d:SQLiteDatabase,j:Journal,previous?:Journal){
 export async function loadJournal(account:string):Promise<Journal>{
  const d=await db(account),s=await d.getFirstAsync<{data:string}>('SELECT data FROM settings WHERE id=1');
  const rows=await d.getAllAsync<{data:string}>('SELECT data FROM messages ORDER BY time,id');
- return {...empty(),...(s?JSON.parse(s.data):{}),messages:rows.map(r=>JSON.parse(r.data) as Message).map(m=>m.status==='pending'&&!m.deviceId?{...m,status:'failed'}:m)};
+ const j:Journal={...empty(),...(s?JSON.parse(s.data):{}),messages:rows.map(r=>JSON.parse(r.data) as Message)};persisted.set(account,j);
+ return {...j,messages:j.messages.map(m=>m.status==='pending'&&!m.deviceId&&!m.googleJob?{...m,status:'failed'}:m)};
 }
-export async function saveJournal(account:string,j:Journal,previous?:Journal){await write(await db(account),j,previous)}
-export async function deleteJournal(account:string){await write(await db(account),empty());const hash=await digestStringAsync(CryptoDigestAlgorithm.SHA256,account);const old=new File(Paths.document,'assistant-'+hash+'.json');if(old.exists)old.delete()}
+export async function saveJournal(account:string,j:Journal,previous?:Journal){await write(await db(account),j,persisted.get(account)||previous);persisted.set(account,j)}
+export async function deleteJournal(account:string){await write(await db(account),empty());persisted.set(account,empty());const hash=await digestStringAsync(CryptoDigestAlgorithm.SHA256,account);const old=new File(Paths.document,'assistant-'+hash+'.json');if(old.exists)old.delete()}
