@@ -91,3 +91,6 @@ $('mobilePhoneReview').onclick=async()=>{if(!confirm('LiveKit 콘솔에서 기�
 
 $('visionEnable').onclick=async()=>{try{await api('/mobile-admin/vision-config',{url:$('visionUrl').value.trim(),model:$('visionModel').value.trim(),key:$('visionKey').value});$('visionKey').value='';$('visionStatus').textContent='모델 설정 완료. 실제 사진 분석으로 연결을 확인하세요.'}catch(e){$('visionStatus').textContent=e.message}};
 $('visionDisable').onclick=async()=>{try{await api('/mobile-admin/vision-disable',{});$('visionStatus').textContent='사진 분석 연결 해제'}catch(e){$('visionStatus').textContent=e.message}};
+
+$('mobileVoiceEnable').onclick=async()=>{try{const config=Object.fromEntries(['url','sttKey','ttsKey','voice','language'].map(id=>[id,$(id).value.trim()]));Object.assign(config,{apiKey:$('lkKey').value.trim(),apiSecret:$('lkSecret').value.trim()});await api('/mobile-admin/voice-config',config);['lkKey','lkSecret','sttKey','ttsKey'].forEach(id=>$(id).value='');$('mobileVoiceStatus').textContent='앱에서 음성 통화를 시작할 수 있습니다.'}catch(e){$('mobileVoiceStatus').textContent=e.message}};
+$('mobileVoiceDisable').onclick=async()=>{try{await api('/mobile-admin/voice-disable',{});$('mobileVoiceStatus').textContent='전용 음성 설정을 해제했습니다. 별도 전화 설정이 있으면 그 설정을 사용할 수 있습니다.'}catch(e){$('mobileVoiceStatus').textContent=e.message}};

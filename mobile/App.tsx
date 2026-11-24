@@ -3,7 +3,7 @@ import {AppState, SafeAreaView, View, Text, TextInput, Pressable, StyleSheet, us
 import {AudioSession,registerGlobals} from '@livekit/react-native';
 import {Room,RoomEvent,ConnectionState} from 'livekit-client';
 import PersonalChat from './PersonalChat';
-import AssistantChat from './AssistantChat';
+import AssistantChat,{type VoiceSession} from './AssistantChat';
 
 registerGlobals();
 type Pairing={url:string;token:string;room:string;expiresAt:number};
@@ -17,19 +17,22 @@ function parse(raw:string):Pairing{
 }
 export default function App(){
  const [mode,setMode]=useState<'assistant'|'voice'|'legacy'>('assistant');
- return mode==='assistant'?<AssistantChat onAdvanced={()=>setMode('voice')} onLegacy={()=>setMode('legacy')}/>:<View style={{flex:1}}>{mode==='voice'?<LiveKitApp/>:<PersonalChat onAdvanced={()=>setMode('voice')}/>}<Pressable onPress={()=>setMode('assistant')} style={{padding:16,alignItems:'center'}}><Text style={{color:'#3976d7'}}>비서 대화로 돌아가기</Text></Pressable></View>;
+ const [session,setSession]=useState<VoiceSession|null>(null);
+ return mode==='assistant'?<AssistantChat onAdvanced={s=>{setSession(s||null);setMode('voice')}} onLegacy={()=>setMode('legacy')}/>:<View style={{flex:1}}>{mode==='voice'?<LiveKitApp session={session}/>:<PersonalChat onAdvanced={()=>{setSession(null);setMode('voice')}}/>}<Pressable onPress={()=>setMode('assistant')} style={{padding:16,alignItems:'center'}}><Text style={{color:'#3976d7'}}>비서 대화로 돌아가기</Text></Pressable></View>;
 }
-function LiveKitApp(){
+function LiveKitApp({session}:{session:VoiceSession|null}){
   const dark=useColorScheme()==='dark',ink=dark?'#f1f4fa':'#182233';
   const [peerReady,setPeerReady]=useState(false);
-  const [raw,setRaw]=useState(''),[status,setStatus]=useState('연결 대기'),[error,setError]=useState(''),[mic,setMic]=useState(false),[connected,setConnected]=useState(false),[busy,setBusy]=useState(false);
+  const [raw,setRaw]=useState(session?.pairing||''),[status,setStatus]=useState('연결 대기'),[error,setError]=useState(''),[mic,setMic]=useState(false),[connected,setConnected]=useState(false),[busy,setBusy]=useState(false);
   const roomRef=useRef<Room|null>(null),generation=useRef(0),inFlight=useRef(false);
+  const stopRef=useRef(session?.stop);
   async function disconnect(){
     generation.current++;
     const room=roomRef.current;roomRef.current=null;
     setConnected(false);setMic(false);setPeerReady(false);setStatus('연결 종료');
     if(room){try{await room.disconnect()}catch{}}
     try{await AudioSession.stopAudioSession()}catch{}
+    const stop=stopRef.current;stopRef.current=undefined;if(stop)try{await stop()}catch{setError('PC에서 음성 종료 상태를 확인하세요.')}
   }
   useEffect(()=>{
     const sub=AppState.addEventListener('change',state=>{if(state==='background')void disconnect()});
@@ -72,7 +75,7 @@ function LiveKitApp(){
     <Text style={[styles.title,{color:ink}]}>DOMINION Voice</Text><Text style={[styles.sub,{color:ink}]}>PC의 도미니온과 연결하는 개인 음성 비서 · 0.2.1</Text>
     <View style={[styles.card,{backgroundColor:dark?'#202b3c':'white'}]}>
     <Text accessibilityLiveRegion="polite" style={[styles.status,{color:ink}]}>{status}</Text>
-    {!connected&&<><Text style={{color:ink}}>PC 음성 비서에서 만든 임시 연결 정보를 붙여넣으세요.</Text><TextInput accessibilityLabel="임시 연결 정보" value={raw} onChangeText={setRaw} autoCapitalize="none" autoCorrect={false} secureTextEntry editable={!busy} placeholder="연결 정보" placeholderTextColor="#8792a2" style={[styles.input,{color:ink}]}/><Pressable accessibilityRole="button" disabled={!raw.trim()||busy} onPress={()=>void connect()} style={[styles.button,{opacity:!raw.trim()||busy ? 0.5 : 1}]}><Text style={styles.buttonText}>연결</Text></Pressable></>}
+    {!connected&&<><Text style={{color:ink}}>{session?'음성 연결 준비 완료. 연결을 누르세요.':'PC 음성 비서에서 만든 임시 연결 정보를 붙여넣으세요.'}</Text>{!session&&<TextInput accessibilityLabel="임시 연결 정보" value={raw} onChangeText={setRaw} autoCapitalize="none" autoCorrect={false} secureTextEntry editable={!busy} placeholder="연결 정보" placeholderTextColor="#8792a2" style={[styles.input,{color:ink}]}/>}<Pressable accessibilityRole="button" disabled={!raw.trim()||busy} onPress={()=>void connect()} style={[styles.button,{opacity:!raw.trim()||busy ? 0.5 : 1}]}><Text style={styles.buttonText}>연결</Text></Pressable></>}
     {connected&&<Text accessibilityLiveRegion="polite" style={{color:ink}}>{peerReady?'PC 음성 비서가 연결되었습니다.':'PC 음성 비서 입장을 기다리는 중입니다.'}</Text>}
     {connected&&<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void toggle()} style={[styles.button,{backgroundColor:mic?'#bd4141':'#285bca'}]}><Text style={styles.buttonText}>{mic?'마이크 끄기':'마이크 켜기'}</Text></Pressable>}
     {(connected||busy)&&<Pressable accessibilityRole="button" onPress={()=>void disconnect()} style={styles.secondary}><Text style={{color:ink}}>연결 종료</Text></Pressable>}

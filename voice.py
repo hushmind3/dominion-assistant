@@ -5,10 +5,11 @@ credentials stay within this process. A private single-user room is required.
 """
 import asyncio
 import time
+from voice_turn import VoiceTurnGate
 
 async def run_live(conversation, config, stop, report=lambda state: None):
     from pipecat.audio.vad.silero import SileroVADAnalyzer
-    from pipecat.frames.frames import LLMContextFrame, TTSSpeakFrame
+    from pipecat.frames.frames import LLMContextFrame, TTSSpeakFrame, InterruptionFrame
     from pipecat.pipeline.pipeline import Pipeline
     from pipecat.pipeline.worker import PipelineParams, PipelineWorker
     from pipecat.processors.aggregators.llm_context import LLMContext
@@ -36,9 +37,15 @@ async def run_live(conversation, config, stop, report=lambda state: None):
         def __init__(self):
             super().__init__()
             self.last_count = 0
+            self.gate = VoiceTurnGate()
+            self.pump_task = None
 
         async def process_frame(self, frame, direction):
             await super().process_frame(frame, direction)
+            if isinstance(frame,InterruptionFrame) and direction==FrameDirection.DOWNSTREAM:
+                self.gate.interrupt()
+                await self.push_frame(frame,direction)
+                return
             if not isinstance(frame, LLMContextFrame) or direction != FrameDirection.DOWNSTREAM:
                 await self.push_frame(frame, direction)
                 return
@@ -56,34 +63,53 @@ async def run_live(conversation, config, stop, report=lambda state: None):
                 text = " ".join(x.get("text", "") for x in text if isinstance(x, dict) and x.get("type") == "text")
             if not isinstance(text, str) or not text.strip():
                 return
-            try:
-                if config.get("phoneId"):
-                    rid = conversation.submit(text, "live", kind="chat", phone_id=config["phoneId"], objective=config["objective"])
-                elif mode in ("outbound","inbound"):
-                    rid = conversation.submit(text, "live", kind="chat")
-                else:
-                    rid = conversation.submit(text, "live")
-            except ValueError:
-                await self.push_frame(TTSSpeakFrame("이전 답변을 기다리고 있습니다." if config["language"] == "ko" else "Waiting for the previous answer."))
-                return
-            self.create_task(self.wait_answer(rid))
+            self.offer(text)
 
-        async def wait_answer(self, rid):
-            deadline = time.monotonic() + 180
-            while time.monotonic() < deadline and not stop.is_set():
-                result = conversation.answer(rid)
+        def offer(self,text):
+            self.gate.offer(text)
+            if self.pump_task is None or self.pump_task.done():
+                self.pump_task=self.create_task(self.pump())
+
+        async def pump(self):
+            while not stop.is_set():
+                if self.gate.latest is None:
+                    return
+                if conversation.request():
+                    await asyncio.sleep(.15)
+                    continue
+                item=self.gate.take()
+                if item is None: continue
+                epoch,text=item
+                try:
+                    if config.get("phoneId"):
+                        rid=conversation.submit(text,"phone",kind="chat",phone_id=config["phoneId"],objective=config["objective"])
+                    elif mode in ("outbound","inbound"):
+                        rid=conversation.submit(text,"phone",kind="chat")
+                    else:
+                        rid=conversation.submit(text,"live",kind="chat")
+                except ValueError:
+                    if self.gate.current(epoch):
+                        await self.push_frame(TTSSpeakFrame("발화를 처리할 수 없습니다." if config["language"]=="ko" else "Unable to process this utterance."))
+                    continue
+                await self.wait_answer(rid,epoch)
+
+        async def wait_answer(self,rid,epoch):
+            deadline=time.monotonic()+180
+            while time.monotonic()<deadline and not stop.is_set():
+                result=conversation.answer(rid)
                 if result is not None:
-                    if result:
+                    if result and self.gate.current(epoch):
                         await self.push_frame(TTSSpeakFrame(result[:8000]))
                     return
-                state = conversation.status()
-                if not state["pending"]:
-                    if (state.get("last") or {}).get("requestId") == rid and state["last"].get("status") not in (None,"completed"):
-                        await self.push_frame(TTSSpeakFrame(state["last"]["answer"][:1000]))
+                state=conversation.status()
+                if not state["pending"] or state["pending"]["requestId"]!=rid:
+                    last=state.get("last") or {}
+                    if last.get("requestId")==rid and last.get("status") not in (None,"completed") and self.gate.current(epoch):
+                        await self.push_frame(TTSSpeakFrame(last["answer"][:1000]))
                     return
-                await asyncio.sleep(0.35)
-            if not stop.is_set():
-                await self.push_frame(TTSSpeakFrame("답변이 아직 준비되지 않았습니다. 도미니온 작업 상태를 확인하세요." if config["language"] == "ko" else "The answer is not ready. Check the DOMINION task."))
+                await asyncio.sleep(.15)
+            if not stop.is_set() and self.gate.current(epoch):
+                await self.push_frame(TTSSpeakFrame("답변이 지연되고 있습니다." if config["language"]=="ko" else "The answer is taking longer."))
 
     dominion = Dominion()
     worker = PipelineWorker(Pipeline([transport.input(), stt, user, dominion, tts, transport.output()]),
@@ -117,11 +143,7 @@ async def run_live(conversation, config, stop, report=lambda state: None):
         if mode in ("outbound","inbound"):
             await worker.queue_frame(TTSSpeakFrame("안녕하세요, 도미니온 AI 음성 비서입니다." if config["language"]=="ko" else "Hello, this is the DOMINION AI voice assistant."))
             if config.get("phoneId"):
-                try:
-                    rid = conversation.submit("통화 상대가 연결되었습니다. 통화 목적에 맞는 첫 질문 또는 인사를 하세요.", "live", kind="chat", phone_id=config["phoneId"], objective=config["objective"])
-                    dominion.create_task(dominion.wait_answer(rid))
-                except ValueError:
-                    stop.set()
+                dominion.offer("통화 상대가 연결되었습니다. 통화 목적에 맞는 첫 질문 또는 인사를 하세요.")
 
     @transport.event_handler("on_participant_disconnected")
     async def left(transport, participant_id):

@@ -35,7 +35,7 @@
 <label>LiveKit API 비밀키<input id="lkSecret" type="password" autocomplete="off"></label>
 <p class="note">위 고급 모드의 LiveKit URL·Deepgram·Cartesia·음성 ID·언어를 사용합니다. 봇 토큰은 직접 입력할 필요가 없습니다.</p>
 <div class="row"><button class="primary" id="pairStart">휴대폰 연결 만들기</button></div>
-<label>휴대폰 앱에 붙여넣을 임시 연결 정보<textarea id="pairing" readonly placeholder="휴대폰 연결 만들기를 누르세요"></textarea></label><button id="pairCopy">연결 정보 복사</button>
+<label>휴대폰 앱에 붙여넣을 임시 연결 정보<textarea id="pairing" readonly placeholder="휴대폰 연결 만들기를 누르세요"></textarea></label><button id="pairCopy">연결 정보 복사</button><div class="row"><button id="mobileVoiceEnable" class="primary">휴대폰 음성 기능 켜기</button><button id="mobileVoiceDisable">끄기</button></div><p class="note">위의 LiveKit와 음성 공급자 설정을 사용합니다. SIP 트렁크 없이도 앱에서 음성 연결을 시작할 수 있습니다. 키는 서버 메모리에만 저장됩니다.</p><p id="mobileVoiceStatus" role="status"></p>
 <hr><label>발신 트렁크 ID<input id="sipTrunk" placeholder="ST_..." autocomplete="off"></label>
 <label>전화번호<input id="sipNumber" type="tel" placeholder="+82..." autocomplete="off"></label>
 <button id="dial">전화 걸기</button><div class="row"><button id="mobilePhoneEnable" class="primary">휴대폰 전화 기능 켜기</button><button id="mobilePhoneDisable">끄기</button><button id="mobilePhoneReview">이전 통화 종료 확인</button></div><p class="note">위의 LiveKit 및 음성 키와 트렁크를 사용합니다. 키는 서버 메모리에만 저장되며 휴대폰에 전송되지 않습니다. 휴대폰에서 실제 전화번호와 목적을 입력하고 매번 승인해야 합니다.</p><p id="mobilePhoneStatus" role="status"></p>

@@ -87,6 +87,13 @@ class Conversation:
             self.pending = {"requestId": rid, "instruction": instruction,
                             "text": text.strip(), "source": source, "kind": kind, "phoneId": phone_id}
             self.inbox.progress = None
+            if source=='live' and not phone_id:
+                while len(self.mobile_turns)>=200:
+                    i=next((i for i,t in enumerate(self.mobile_turns) if t['status'] not in ('queued','running','awaiting_approval')),None)
+                    if i is None: break
+                    self.mobile_turns.pop(i)
+                if len(self.mobile_turns)<200:
+                    self.mobile_turns.append({'clientId':'voice-'+rid,'requestId':rid,'text':text.strip(),'kind':kind,'status':'queued','createdAt':int(time.time()*1000),'source':'voice'})
             self.persist()
             return rid
 
@@ -280,6 +287,8 @@ conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ 
 mobile_access = MobileAccess(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'mobile-access.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
 phone_lock = threading.RLock()
 phone_config = None
+mobile_voice_config = None
+mobile_voice_pair = None
 live_lock = threading.Lock()
 live = {"state": "stopped"}
 live_stop = threading.Event()
@@ -290,10 +299,12 @@ def live_start(config, managed=False):
     from session import prepare
     pairing = None
     phone_id, objective = config.get('phoneId'), config.get('objective')
+    voice_id=config.get('mobileVoiceId')
     if managed:
         config, pairing = prepare(config)
     if phone_id:
         config.update(phoneId=phone_id,objective=objective)
+    if voice_id: config['mobileVoiceId']=voice_id
     if not all(isinstance(config.get(k), str) and 0 < len(config[k]) <= 4096 for k in names):
         raise ValueError("LiveKit와 음성 모델 설정을 입력하세요.")
     if not config["url"].startswith("wss://") or config["language"] not in ("ko", "en"):
@@ -305,7 +316,7 @@ def live_start(config, managed=False):
             raise ValueError("대기 중인 대화 요청을 먼저 처리하세요.")
         conversation.reset()
         live.clear()
-        live.update(state="starting", mode=config.get("mode", "manual"), room=config["room"], phoneId=phone_id)
+        live.update(state="starting", mode=config.get("mode", "manual"), room=config["room"], phoneId=phone_id, mobileVoiceId=voice_id)
         live_stop.clear()
     def report(status):
         with live_lock:
@@ -332,6 +343,41 @@ def live_start(config, managed=False):
     threading.Thread(target=run, daemon=True).start()
     return {"state":"starting", "pairing":pairing, "room":config["room"]}
 
+
+def configure_mobile_voice(data):
+    global mobile_voice_config
+    from urllib.parse import urlsplit
+    fields=('url','apiKey','apiSecret','sttKey','ttsKey','voice','language')
+    if not all(isinstance(data.get(k),str) and 0<len(data[k].strip())<=4096 for k in fields):
+        raise ValueError('LiveKit 및 음성 공급자 설정을 입력하세요.')
+    u=urlsplit(data['url'])
+    if u.scheme!='wss' or not u.hostname or u.username or u.password or u.query or u.fragment or data['language'] not in ('ko','en'):
+        raise ValueError('LiveKit 연결 주소와 언어를 확인하세요.')
+    with phone_lock:
+        mobile_voice_config={k:data[k].strip() for k in fields}
+
+def start_mobile_voice(data):
+    global mobile_voice_pair
+    vid=data.get('voiceId')
+    if data.get('confirmed') is not True or not isinstance(vid,str) or not re.fullmatch(r'[A-Za-z0-9-]{1,80}',vid):
+        raise ValueError('음성 연결을 승인하세요.')
+    with phone_lock:
+        with live_lock:
+            if live.get('mobileVoiceId')==vid and live['state'] not in ('stopped','failed','stopping') and mobile_voice_pair:
+                return mobile_voice_pair.copy()
+        config=mobile_voice_config or phone_config
+        if not config: raise ValueError('PC에서 휴대폰 실시간 음성을 설정하세요.')
+        result=live_start({**config,'mode':'mobile','mobileVoiceId':vid},managed=True)
+        mobile_voice_pair={'voiceId':vid,'pairing':result['pairing']}
+        return mobile_voice_pair.copy()
+
+def stop_mobile_voice(vid):
+    with live_lock:
+        if not vid or live.get('mobileVoiceId')!=vid:
+            raise ValueError('음성 세션이 일치하지 않습니다.')
+        if live['state'] not in ('stopped','failed'):
+            live['state']='stopping'
+            live_stop.set()
 
 def configure_phone(data):
     global phone_config
@@ -479,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(401, {"error": "Bridge authentication required"})
                 return
             with conversation.lock:
-                request = conversation.request() if not (conversation.pending and (conversation.pending.get('source') == 'mobile' or conversation.pending.get('phoneId'))) else None
+                request = conversation.request() if not (conversation.pending and (conversation.pending.get('source') == 'mobile' or conversation.pending.get('phoneId') or conversation.pending.get('kind')=='chat')) else None
             self.reply(200 if request else 204, request)
         elif self.path == "/":
             page = (ROOT / "index.html").read_text().replace("__VOICE_SESSION__", UI_TOKEN)
@@ -494,7 +540,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404, {"error": "Not found"})
 
     def do_POST(self):
-        global phone_config
+        global phone_config, mobile_voice_config
         if not self.local_host():
             self.reply(403, {"error": "Local host required"})
             return
@@ -510,6 +556,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.body(ATTACH_BODY if self.path=='/mobile/v1/attachment' else MAX_BODY)
                 if self.path == '/mobile/v1/attachment':
                     self.reply(201,conversation.attachments.add(data))
+                elif self.path == '/mobile/v1/voice/start':
+                    self.reply(200,start_mobile_voice(data))
+                elif self.path == '/mobile/v1/voice/stop':
+                    stop_mobile_voice(data.get('voiceId'))
+                    self.reply(200,{'ok':True})
                 elif self.path == '/mobile/v1/profile':
                     self.reply(200,conversation.set_profile(data))
                 elif self.path == '/mobile/v1/send':
@@ -547,7 +598,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {"error": "Local session required"})
                 return
             data = self.body()
-            if self.path == '/mobile-admin/vision-config':
+            if self.path == '/mobile-admin/voice-config':
+                configure_mobile_voice(data)
+                self.reply(200,{'ok':True})
+            elif self.path == '/mobile-admin/voice-disable':
+                with phone_lock: mobile_voice_config=None
+                self.reply(200,{'ok':True})
+            elif self.path == '/mobile-admin/vision-config':
                 conversation.attachments.vision.configure(data)
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/vision-disable':
