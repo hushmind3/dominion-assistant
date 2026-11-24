@@ -61,7 +61,11 @@ class Conversation:
             # History is conversation data, not a new tool or authority grant.
             context = list(self.history)
             if source == 'mobile' or (source == 'live' and not phone_id):
-                context = memory_context(text,self.mobile_turns,self.profile)
+                context = memory_context(text,self.mobile_turns,self.profile,budget=4700)
+                if source=='live':
+                    context['recentWeb']=[{'user':t['user'][:400],'assistant':t['assistant'][:500]} for t in self.history if t.get('source')=='browser'][-2:]
+                    while context['recentWeb'] and len(json.dumps(context,ensure_ascii=False).encode())>6500:
+                        context['recentWeb'].pop(0)
             while isinstance(context,list) and context and len(json.dumps(context, ensure_ascii=False).encode()) > 6500:
                 context.pop(0)
             history = json.dumps(context, ensure_ascii=False)
@@ -130,7 +134,7 @@ class Conversation:
                 raise ValueError("No matching pending request")
             result = {"requestId": rid, "answer": answer, "answerDigest": digest,
                       "source": self.pending["source"]}
-            self.history.append({"user": self.pending["text"][:1500], "assistant": answer[:1500]})
+            self.history.append({"user": self.pending["text"][:1500], "assistant": answer[:1500], "source":self.pending["source"]})
             self.answers[rid] = result
             while len(self.answers) > 32:
                 self.answers.popitem(last=False)

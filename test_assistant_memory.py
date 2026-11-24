@@ -31,3 +31,11 @@ class MemoryTests(unittest.TestCase):
             a=MobileAccess(p);self.assertTrue(a.authorized('Bearer '+token))
             a.revoke()
             self.assertFalse(MobileAccess(p).authorized('Bearer '+token))
+
+    def test_live_context_does_not_include_phone_history(self):
+        c=Conversation()
+        c.phone_begin('call','+821012345678','문의')
+        rid=c.submit('private caller utterance','phone',kind='chat',phone_id='call',objective='문의')
+        c.v2_event(event(rid,'completed','a'*64))
+        rid=c.submit('안녕','live',kind='chat')
+        self.assertNotIn('private caller utterance',c.v2_request()['instruction'])

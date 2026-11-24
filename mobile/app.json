@@ -42,6 +42,19 @@
           "cameraPermission": "비서에게 사진을 보내기 위해 카메라를 사용합니다.",
           "microphonePermission": false
         }
+      ],
+      "expo-notifications",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "전화할 연락처를 직접 선택할 때만 사용합니다."
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "사용자가 선택한 일정을 캘린더에 추가합니다."
+        }
       ]
     ]
   }
