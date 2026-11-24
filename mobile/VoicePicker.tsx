@@ -1,0 +1,17 @@
+import React,{useEffect,useState} from 'react';
+import {View,Text,Pressable,Alert,useColorScheme} from 'react-native';
+import * as Speech from 'expo-speech';
+export type VoicePreference={id?:string;rate:number};
+export const DEFAULT_VOICE:VoicePreference={rate:1};
+export function voiceOptions(p:VoicePreference,language='ko-KR'):Speech.SpeechOptions{
+ return {language,rate:p.rate||1,...(p.id?{voice:p.id}:{})};
+}
+export default function VoicePicker({value,onChange,language='ko-KR'}:{value:VoicePreference;onChange:(v:VoicePreference)=>void;language?:string}){
+ const dark=useColorScheme()==='dark',ink=dark?'#EFF5F0':'#17251D',muted=dark?'#A4B5AA':'#647369',card=dark?'#1D2722':'#FFFFFF',accent=dark?'#A5D5A1':'#286744',line=dark?'#35443B':'#DFE6E0';
+ const [voices,setVoices]=useState<Speech.Voice[]>([]),[ready,setReady]=useState(false),[playing,setPlaying]=useState<string|null>(null);
+ useEffect(()=>{let live=true;void Speech.getAvailableVoicesAsync().then(v=>{if(live)setVoices(v.filter(x=>x.language.toLowerCase().startsWith(language.slice(0,2).toLowerCase())))}).catch(()=>{}).finally(()=>{if(live)setReady(true)});return()=>{live=false;void Speech.stop()}},[language]);
+ const sample=language.startsWith('ko')?'안녕하세요. 오늘도 함께할게요. 궁금한 것이 있으면 언제든 말씀해 주세요.':'Hello. I am here whenever you need me.';
+ const preview=async(id?:string)=>{await Speech.stop();const k=id||'default';setPlaying(k);try{Speech.speak(sample,{...voiceOptions({...value,id},language),onDone:()=>setPlaying(v=>v===k?null:v),onStopped:()=>setPlaying(v=>v===k?null:v),onError:()=>{setPlaying(null);Alert.alert('목소리','이 목소리를 재생할 수 없습니다. 휴대폰 음성 설정을 확인하세요.')}})}catch{setPlaying(null)}};
+ const items=[{id:undefined,label:'기본 목소리'},...voices.map((v,i)=>({id:v.identifier,label:'목소리 '+(i+1)}))];
+ return <View style={{backgroundColor:card,padding:15,borderRadius:16,gap:12}}><Text style={{color:ink,fontSize:20,fontWeight:'700'}}>비서 목소리</Text><Text style={{color:muted,lineHeight:20}}>직접 들어보고 마음에 드는 목소리를 고르세요.</Text>{items.map(v=><View key={v.id||'default'} style={{flexDirection:'row',alignItems:'center',gap:10,borderWidth:1,borderColor:value.id===v.id?accent:line,borderRadius:14,padding:12}}><Pressable accessibilityRole="radio" accessibilityState={{checked:value.id===v.id}} onPress={()=>onChange({...value,id:v.id})} style={{flex:1,flexDirection:'row',alignItems:'center',gap:10}}><Text style={{color:accent,fontSize:20}}>{value.id===v.id?'●':'○'}</Text><Text style={{color:ink,fontSize:16,fontWeight:'600'}}>{v.label}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={v.label+' 미리 듣기'} onPress={()=>void preview(v.id)} style={{padding:8}}><Text style={{color:accent,fontWeight:'600'}}>{playing===(v.id||'default')?'재생 중':'▶ 듣기'}</Text></Pressable></View>)}{ready&&!voices.length&&<Text style={{color:muted,fontSize:13}}>추가 목소리는 휴대폰의 음성 출력 설정에서 설치할 수 있습니다.</Text>}<Text style={{color:ink,fontWeight:'600'}}>말하는 속도</Text><View style={{flexDirection:'row',gap:8}}>{[{rate:.85,label:'천천히'},{rate:1,label:'보통'},{rate:1.15,label:'빠르게'}].map(x=><Pressable key={x.rate} onPress={()=>onChange({...value,rate:x.rate})} style={{flex:1,borderWidth:1,borderColor:line,borderRadius:12,padding:12,alignItems:'center',backgroundColor:value.rate===x.rate?accent:card}}><Text style={{color:value.rate===x.rate?(dark?'#152418':'white'):ink}}>{x.label}</Text></Pressable>)}</View><Text style={{color:muted,fontSize:12}}>현재 휴대폰에서 제공하는 목소리입니다. 한국어 자연음성 팩은 준비 중입니다.</Text></View>
+}
