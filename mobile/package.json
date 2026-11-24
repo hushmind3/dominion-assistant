@@ -1,6 +1,6 @@
 {
   "name": "dominion-voice-mobile",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -22,7 +22,8 @@
     "react-native": "0.86.3",
     "typescript": "6.0.3",
     "expo-speech": "57.0.3",
-    "expo-speech-recognition": "57.1.0"
+    "expo-speech-recognition": "57.1.0",
+    "expo-secure-store": "57.0.4"
   },
   "devDependencies": {
     "@babel/core": "7.29.0"

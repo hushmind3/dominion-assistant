@@ -10,6 +10,7 @@
 </head>
 <body><main>
 <h1>DOMINION Voice</h1><p class="sub">독립 음성 비서 · 도미니온 연결</p>
+<section class="card"><h2>개인 비서 앱 연결</h2><p class="note">SDK v2 연결을 켜고 PC에서 lan_relay.py를 실행하세요. 휴대폰 앱에 릴레이 주소와 아래 코드를 입력합니다. 신뢰하는 개인 Wi-Fi 전용입니다.</p><div class="row"><button id="mobilePair" class="primary">연결 코드 만들기</button><button id="mobileRevoke">휴대폰 연결 해제</button></div><label>5분 동안 유효한 코드<input id="mobileCode" readonly autocomplete="off"></label><p id="mobilePairStatus" role="status"></p></section>
 <section class="card"><h2>음성 대화</h2><p class="note">도미니온의 플러그인 화면에서 실행 후 ‘도미니온 작업 연결’ → 자동 대화 허용을 켜세요. 자동 대화가 꺼져 있다면 도미니온에서 요청과 답변을 각각 승인합니다.</p>
 <label>말하거나 직접 입력하세요<textarea id="utterance" maxlength="2000" placeholder="오늘 계획을 정리해 줘"></textarea></label>
 <div class="row"><button id="mic">🎙 음성 입력</button><button class="primary" id="send">보내기</button><button id="mute">음성 재생 끄기</button></div>

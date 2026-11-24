@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "DOMINION Voice",
+    "name": "DOMINION Assistant",
     "slug": "dominion-voice-mobile",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -25,7 +25,7 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_LOCAL_NETWORK"
       ],
-      "versionCode": 4,
+      "versionCode": 5,
       "blockedPermissions": [
         "android.permission.CAMERA"
       ]
@@ -34,7 +34,8 @@
       "@livekit/react-native-expo-plugin",
       "@config-plugins/react-native-webrtc",
       "expo-speech-recognition",
-      "./withPersonalLan.js"
+      "./withPersonalLan.js",
+      "expo-secure-store"
     ]
   }
 }

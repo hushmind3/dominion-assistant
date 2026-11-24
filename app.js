@@ -81,3 +81,6 @@ $('listen').onclick=()=>void managed('inbound');
 $('pairCopy').onclick=async()=>{if(!$('pairing').value)return;try{await navigator.clipboard.writeText($('pairing').value);$('managedStatus').textContent='복사했습니다. 본인의 휴대폰에만 전달하세요.'}catch(e){$('pairing').select();$('managedStatus').textContent='선택된 정보를 직접 복사하세요.'}};
 $('endSession').onclick=async()=>{try{await api('/live/stop',{});$('pairing').value='';$('managedStatus').textContent='종료 중…'}catch(e){$('managedStatus').textContent=e.message}};
 void update();setInterval(update,1500);
+
+$('mobilePair').onclick=async()=>{try{const r=await api('/mobile-admin/pair',{});$('mobileCode').value=r.code;$('mobilePairStatus').textContent='5분 안에 휴대폰에 입력하세요.';}catch(e){$('mobilePairStatus').textContent=e.message}};
+$('mobileRevoke').onclick=async()=>{try{await api('/mobile-admin/revoke',{});$('mobileCode').value='';$('mobilePairStatus').textContent='휴대폰 인증을 해제했습니다.';}catch(e){$('mobilePairStatus').textContent=e.message}};

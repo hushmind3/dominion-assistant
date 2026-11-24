@@ -21,3 +21,14 @@ The assistant now implements the language-neutral host-pull capability, request 
 
 ## Published plugin package
 The `Publish OCI plugin` workflow tests the real service, pushes a commit-tagged GHCR image, verifies that the exact digest can be pulled without credentials, and only then writes a digest-pinned `dominion-plugin.json`. If the package is private, the workflow stops instead of advertising a broken installation. Make the GHCR package public and rerun the workflow. Search by `hushmind3/dominion-assistant` in the DOMINION marketplace; add GitHub topic `dominion-plugin` to participate in general topic search. The v2 bridge is independent of any assistant feature implementation.
+
+## 0.4 mobile assistant
+The new default mobile client uses the independent Assistant service, not the legacy Rust personal_voice adapter. It supports a single-owner 1:1 timeline, chat/task intent, a durable FIFO queue (up to 20 unfinished requests, 200 retained turns), host event status, and cancellation of undispatched turns. Host-pull v2 still dispatches one job at a time; queued messages are not parallel execution. Chat and task permissions remain controlled by the host. Voice dictation and optional TTS use the phone; live-room voice and the legacy LAN client remain available separately.
+
+For a local integration test:
+1. Install/start the updated Assistant image on a host supporting SDK v2, grant the required scope, and note its loopback service port.
+2. On the PC run `python3 lan_relay.py --bind <PC-private-IPv4> --target-port <assistant-loopback-port>`. This explicit relay forwards only five native mobile routes. Do not expose it on the public internet or forward router ports; this is trusted Wi-Fi HTTP, not encrypted remote access.
+3. In the Assistant web UI create a mobile pairing code, then enter the relay address and code in the mobile app. Pair codes expire after five minutes, tokens after 24 hours or service restart. The mobile app keeps its token in OS secure storage. Revocation does not cancel already queued/host work.
+4. Send a chat and a task; verify real host events and answers on the phone. Check that a second queued message survives service restart. Do not infer runtime success from an APK build alone.
+
+Phone/SIP, photo/file transfer, remote TLS transport, persistent device credentials across server restart, parallel execution and streaming remain separate development work. No host branches are modified by this release.
