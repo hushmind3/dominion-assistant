@@ -3,7 +3,7 @@ import type {CallPreferences} from './CallPreferences';
 import type {VoicePreference} from './VoicePicker';
 import {File,Paths} from 'expo-file-system';
 import {digestStringAsync,CryptoDigestAlgorithm} from 'expo-crypto';
-export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string};
+export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string;localOnly?:boolean};
 export type Journal={messages:Message[];model:string;deviceId?:string;profile?:Profile;offlineRecognition?:boolean;callPreferences?:CallPreferences;voice?:VoicePreference};
 const empty=():Journal=>({messages:[],model:'dominion/free-auto'});
 async function file(account:string){return new File(Paths.document,'assistant-'+await digestStringAsync(CryptoDigestAlgorithm.SHA256,account)+'.json')}
