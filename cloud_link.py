@@ -2,6 +2,7 @@
 import json
 import re
 import base64
+import hashlib
 import os
 import secrets
 import tempfile
@@ -35,7 +36,8 @@ def request(url,method='POST',data=None,auth=None,timeout=15,extra=None):
         return r.status,obj
 
 def cloud(path,data=None,auth=None,method='POST'):
-    status,value=request(BASE+'/v1/assistant/'+path,method,data,auth)
+    url=BASE+(path if path.startswith('/v1/') else '/v1/assistant/'+path)
+    status,value=request(url,method,data,auth)
     if not 200<=status<300:raise CloudError(status,value.get('error','Cloud connection failed'))
     return value
 
@@ -90,25 +92,28 @@ class CloudLink:
         finally:
             if os.path.exists(tmp):os.unlink(tmp)
     def start(self):
-        data=cloud('auth/start',{})
-        url=data.get('url','')
-        if not url.startswith(BASE+'/v1/assistant/auth/open?'):raise ValueError('Invalid login URL')
+        token='dapp_'+secrets.token_urlsafe(32)
+        token_hash=base64.urlsafe_b64encode(hashlib.sha256(token.encode()).digest()).decode().rstrip('=')
+        data=cloud('/v1/apps/start',{'app_name':'DOMINION Assistant PC','token_hash':token_hash,'capability':'assistant_pc'})
+        url=data.get('verification_uri','')
+        if not url.startswith(BASE+'/connect?code='):raise ValueError('Invalid login URL')
         with self.lock:
-            self.flight={'id':data['id'],'poll_token':data['poll_token'],'until':time.monotonic()+600}
+            self.flight={'id':data['id'],'appToken':token,'until':time.monotonic()+min(600,int(data.get('expires_in',600)))}
         return {'url':url}
     def login_status(self):
         with self.lock:
             flight=self.flight
             if not flight or time.monotonic()>=flight['until']:raise ValueError('로그인 요청이 만료되었습니다.')
             if 'token' in flight:return {'status':'done','accountId':flight['accountId']}
-            p={k:flight[k] for k in ('id','poll_token')}
-        r=cloud('auth/status',p)
+            token=flight['appToken']
+        r=cloud('/v1/apps/status',auth='Bearer '+token,method='GET')
+        if r.get('status') in ('expired','revoked'):raise ValueError('Cloud 로그인이 만료되었거나 해제되었습니다.')
+        if r.get('status')!='approved':return {'status':'waiting'}
+        account=cloud('/v1/me',auth='Bearer '+token,method='GET')
         with self.lock:
             if self.flight is not flight:raise ValueError('로그인 요청이 변경되었습니다.')
-            if r.get('status')=='done':
-                flight['token']=r['token'];flight['accountId']=r['account_id']
-                return {'status':'done','accountId':flight['accountId']}
-            return {'status':'waiting'}
+            flight['token']=token;flight['accountId']=account['account_id']
+            return {'status':'done','accountId':flight['accountId']}
     def register(self,name,confirmed):
         if confirmed is not True or not isinstance(name,str) or not name.strip() or len(name)>80:raise ValueError('기기 등록을 확인하세요.')
         with self.lock:

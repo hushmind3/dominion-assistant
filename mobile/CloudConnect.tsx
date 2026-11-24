@@ -1,12 +1,12 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Text,View,Pressable,StyleSheet,useColorScheme} from 'react-native';
-import {loadAccount,clearAccount,saveAccount,logout,revokeDevice,loginStart,loginStatus,openLogin,devices,subscribeRelay,CloudApiError,type CloudAccount,type Device,type Flight} from './cloud';
+import {loadAccount,clearAccount,saveAccount,logout,revokeDevice,cloud,loginStart,loginStatus,openLogin,devices,subscribeRelay,CloudApiError,type CloudAccount,type Device,type Flight} from './cloud';
 export default function CloudConnect({onConnect,onLocal}:{onConnect:(a:CloudAccount,d:Device)=>Promise<void>;onLocal:()=>void}){
  const dark=useColorScheme()==='dark',ink=dark?'#F3F6EF':'#17221A',muted=dark?'#A1B0A2':'#627167',card=dark?'#202720':'#FFFFFF',accent=dark?'#A5D5A1':'#35683F';
  const [account,setAccount]=useState<CloudAccount|null>(null),[rows,setRows]=useState<Device[]>([]),[busy,setBusy]=useState(true),[error,setError]=useState(''),[waiting,setWaiting]=useState(false);
  const flight=useRef<Flight|null>(null),alive=useRef(true);
  useEffect(()=>{alive.current=true;void loadAccount().then(a=>{if(alive.current)setAccount(a)}).catch(e=>setError(e.message)).finally(()=>setBusy(false));return()=>{alive.current=false;flight.current=null}},[]);
- const refresh=async(a:CloudAccount)=>{try{const list=await devices(a);if(alive.current){setRows(list);setError('')}}catch(e){if(!alive.current)return;if(e instanceof CloudApiError&&e.status===401){await clearAccount();setAccount(null);setRows([])}setError((e as Error).message)}};
+ const refresh=async(a:CloudAccount)=>{try{await cloud('/v1/me',undefined,a.token);const list=await devices(a);if(alive.current){setRows(list);setError('')}}catch(e){if(!alive.current)return;if(e instanceof CloudApiError&&e.status===401){await clearAccount();setAccount(null);setRows([])}setError((e as Error).message)}};
  useEffect(()=>{if(!account)return;void refresh(account);return subscribeRelay(account.token,e=>{if(!alive.current)return;if(e.type==='devices'&&e.devices){setRows(e.devices);setError('')}else if(e.type==='offline')setRows(v=>v.map(d=>({...d,online:false})));else if(e.type==='unauthorized'){void clearAccount();setAccount(null);setRows([])}})},[account]);
  const signIn=async()=>{if(busy||waiting)return;setBusy(true);setError('');try{const f=await loginStart();flight.current=f;setWaiting(true);await openLogin(f);const until=Date.now()+f.expires_in*1000;
   while(alive.current&&flight.current===f&&Date.now()<until){const a=await loginStatus(f);if(a){if(alive.current&&flight.current===f){await saveAccount(a);if(alive.current&&flight.current===f){setAccount(a);setWaiting(false)}}return}await new Promise(resolve=>setTimeout(resolve,2500))}

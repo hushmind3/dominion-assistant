@@ -26,3 +26,14 @@ class CloudLinkTests(unittest.TestCase):
         status,value=compact('history',history)
         self.assertEqual(status,200);self.assertTrue(value['cloudHistoryLimited'])
         self.assertIn(active,value['turns']);self.assertEqual(value['turns'][-1]['createdAt'],200)
+
+    def test_shared_app_login_contract(self):
+        c=CloudLink()
+        replies=[{'id':'pair','verification_uri':'https://dominion-cloud.dominion-hushmind.workers.dev/connect?code=pair','expires_in':600},{'status':'approved'},{'account_id':'google:a'}]
+        with patch('cloud_link.cloud',side_effect=replies) as call:
+            self.assertIn('/connect?code=',c.start()['url'])
+            self.assertEqual(c.login_status(),{'status':'done','accountId':'google:a'})
+            self.assertEqual(call.call_args_list[0].args[0],'/v1/apps/start')
+            self.assertEqual(call.call_args_list[0].args[1]['capability'],'assistant_pc')
+            self.assertTrue(call.call_args_list[1].kwargs['auth'].startswith('Bearer dapp_'))
+            self.assertEqual(call.call_args_list[2].args[0],'/v1/me')

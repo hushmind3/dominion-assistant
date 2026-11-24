@@ -1,11 +1,11 @@
 import {Linking} from 'react-native';
-import {randomUUID} from 'expo-crypto';
+import {randomUUID,getRandomBytesAsync,digestStringAsync,CryptoDigestAlgorithm,CryptoEncoding} from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 export const CLOUD='https://dominion-cloud.dominion-hushmind.workers.dev';
 const SESSION='dominion-cloud-account-v1';
 export type CloudAccount={token:string;accountId:string};
 export type Device={id:string;name:string;online:boolean;last_seen:number};
-export type Flight={id:string;poll_token:string;url:string;expires_in:number};
+export type Flight={id:string;appToken:string;url:string;expires_in:number};
 export class CloudApiError extends Error{constructor(public status:number,message:string){super(message)}}
 export async function cloud(path:string,body?:object,token?:string,timeout=15000){
  const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),timeout);
@@ -14,23 +14,32 @@ export async function cloud(path:string,body?:object,token?:string,timeout=15000
   const x=await r.json();if(!r.ok)throw new CloudApiError(r.status,x.error||'Cloud connection failed');return x;
  }finally{clearTimeout(t)}
 }
-export async function loginStart():Promise<Flight>{return cloud('/v1/assistant/auth/start',{})}
-export async function openLogin(f:Flight){if(!f.url.startsWith(CLOUD+'/v1/assistant/auth/open?'))throw Error('Invalid login URL');await Linking.openURL(f.url)}
+const base64url=(s:string)=>s.replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+function encodeBytes(bytes:Uint8Array){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';let out='',n=0,bits=0;for(const b of bytes){n=(n<<8)|b;bits+=8;while(bits>=6){bits-=6;out+=alphabet[(n>>>bits)&63]}}if(bits)out+=alphabet[(n<<(6-bits))&63];return out}
+export async function loginStart():Promise<Flight>{
+ const appToken='dapp_'+encodeBytes(await getRandomBytesAsync(32));
+ const token_hash=base64url(await digestStringAsync(CryptoDigestAlgorithm.SHA256,appToken,{encoding:CryptoEncoding.BASE64}));
+ const r=await cloud('/v1/apps/start',{app_name:'DOMINION Assistant',token_hash,capability:'assistant_remote'});
+ return {id:r.id,appToken,url:r.verification_uri,expires_in:r.expires_in};
+}
+export async function openLogin(f:Flight){if(!f.url.startsWith(CLOUD+'/connect?code='))throw Error('Invalid login URL');await Linking.openURL(f.url)}
 export async function loginStatus(f:Flight):Promise<CloudAccount|null>{
- const x=await cloud('/v1/assistant/auth/status',{id:f.id,poll_token:f.poll_token});
- if(x.status!=='done')return null;
- if(typeof x.token!=='string'||typeof x.account_id!=='string'||!x.account_id.startsWith('google:'))throw Error('Invalid account');
- return {token:x.token,accountId:x.account_id};
+ const x=await cloud('/v1/apps/status',undefined,f.appToken);
+ if(x.status==='expired'||x.status==='revoked')throw Error('Google 인증이 만료되었거나 해제되었습니다.');
+ if(x.status!=='approved')return null;
+ const a=await cloud('/v1/me',undefined,f.appToken);
+ if(typeof a.account_id!=='string'||!a.account_id.startsWith('google:'))throw Error('Invalid account');
+ return {token:f.appToken,accountId:a.account_id};
 }
 export async function loadAccount():Promise<CloudAccount|null>{
  const raw=await SecureStore.getItemAsync(SESSION);if(!raw)return null;
  const a=JSON.parse(raw) as CloudAccount;
- if(typeof a.token!=='string'||!a.accountId?.startsWith('google:'))return null;
+ if(typeof a.token!=='string'||!/^dapp_[A-Za-z0-9_-]{43}$/.test(a.token)||!a.accountId?.startsWith('google:'))return null;
  return a;
 }
 export async function saveAccount(a:CloudAccount){await SecureStore.setItemAsync(SESSION,JSON.stringify(a))}
 export async function clearAccount(){closeRelay();await SecureStore.deleteItemAsync(SESSION)}
-export async function logout(a:CloudAccount){try{await cloud('/v1/assistant/logout',{},a.token)}finally{await clearAccount()}}
+export async function logout(a:CloudAccount){try{await cloud('/v1/apps/disconnect',{},a.token)}finally{await clearAccount()}}
 export async function revokeDevice(a:CloudAccount,d:Device){await cloud('/v1/assistant/revoke',{deviceId:d.id},a.token)}
 export async function devices(a:CloudAccount):Promise<Device[]>{const x=await cloud('/v1/assistant/devices',undefined,a.token);return x.devices}
 type RelayEvent={type:string;deviceId?:string;devices?:Device[];status?:number};
