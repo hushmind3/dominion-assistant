@@ -1,5 +1,7 @@
 """Outbound, scoped DOMINION Cloud relay. No inbound port or host/admin proxy."""
 import json
+import re
+import base64
 import os
 import secrets
 import tempfile
@@ -128,7 +130,17 @@ class CloudLink:
             return self.status()
     def local(self,work):
         route=work.get('route')
-        if route not in READ|WRITE:return 403,{'error':'Operation not allowed'}
+        if isinstance(route,str) and re.fullmatch(r'attachment/[a-f0-9]{64}',route):
+            if work.get('body') is not None:return 400,{'error':'Invalid read'}
+            req=urllib.request.Request('http://127.0.0.1:8080/mobile/v1/'+route,headers={'X-Assistant-Cloud-Local':self.internal})
+            try:
+                with urllib.request.build_opener(NoRedirect()).open(req,timeout=15) as response:
+                    mime=response.headers.get_content_type();raw=response.read(600001)
+                if mime not in ('image/jpeg','image/png','image/webp'):return 415,{'error':'Only image previews are supported'}
+                if len(raw)>600000:return 413,{'error':'Cloud preview exceeds 600KB'}
+                return 200,{'mime':mime,'base64':base64.b64encode(raw).decode()}
+            except urllib.error.HTTPError as e:return e.code,{'error':'Attachment unavailable'}
+        if not isinstance(route,str) or route not in READ|WRITE:return 403,{'error':'Operation not allowed'}
         data=work.get('body')
         if route in READ and data is not None:return 400,{'error':'Invalid read'}
         if route in WRITE and not isinstance(data,dict):return 400,{'error':'Invalid write'}

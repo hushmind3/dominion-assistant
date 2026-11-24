@@ -1,4 +1,5 @@
 import {Linking} from 'react-native';
+import {randomUUID} from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 export const CLOUD='https://dominion-cloud.dominion-hushmind.workers.dev';
 const SESSION='dominion-cloud-account-v1';
@@ -19,7 +20,7 @@ export async function loginStatus(f:Flight):Promise<CloudAccount|null>{
  const x=await cloud('/v1/assistant/auth/status',{id:f.id,poll_token:f.poll_token});
  if(x.status!=='done')return null;
  if(typeof x.token!=='string'||typeof x.account_id!=='string'||!x.account_id.startsWith('google:'))throw Error('Invalid account');
- const a={token:x.token,accountId:x.account_id};await SecureStore.setItemAsync(SESSION,JSON.stringify(a));return a;
+ return {token:x.token,accountId:x.account_id};
 }
 export async function loadAccount():Promise<CloudAccount|null>{
  const raw=await SecureStore.getItemAsync(SESSION);if(!raw)return null;
@@ -27,12 +28,15 @@ export async function loadAccount():Promise<CloudAccount|null>{
  if(typeof a.token!=='string'||!a.accountId?.startsWith('google:'))return null;
  return a;
 }
+export async function saveAccount(a:CloudAccount){await SecureStore.setItemAsync(SESSION,JSON.stringify(a))}
 export async function clearAccount(){await SecureStore.deleteItemAsync(SESSION)}
+export async function logout(a:CloudAccount){try{await cloud('/v1/assistant/logout',{},a.token)}finally{await clearAccount()}}
+export async function revokeDevice(a:CloudAccount,d:Device){await cloud('/v1/assistant/revoke',{deviceId:d.id},a.token)}
 export async function devices(a:CloudAccount):Promise<Device[]>{const x=await cloud('/v1/assistant/devices',undefined,a.token);return x.devices}
 const sleep=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 export async function relay(token:string,deviceId:string,route:string,body?:object){
  // A lost POST response is retried only with the same relay ID.
- const id=crypto.randomUUID(),payload={id,deviceId,route,body:body??null};
+ const id=randomUUID(),payload={id,deviceId,route,body:body??null};
  if(route==='attachment'&&JSON.stringify(payload).length>800000)throw Error('현재 클라우드 첨부는 약 600KB까지 지원합니다.');
  let result;
  try{result=await cloud('/v1/assistant/rpc',payload,token)}catch(e){if(e instanceof CloudApiError)throw e;result=await cloud('/v1/assistant/rpc',payload,token)}
