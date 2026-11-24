@@ -1,5 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {Animated,BackHandler,Easing,Keyboard,PanResponder,Pressable,StyleSheet,useWindowDimensions,View} from 'react-native';
+import {drawerGesture} from './interactionPolicy';
 type Props={open:boolean;onChange:(open:boolean)=>void;disabled:boolean;children:ReactNode;menu:ReactNode;background:string};
 const clamp=(n:number)=>Math.max(0,Math.min(1,n));
 // Drawer progress is independent from navigation and call state.
@@ -19,8 +20,7 @@ export default function SwipeDrawer({open,onChange,disabled,children,menu,backgr
  useEffect(()=>{if(!open||disabled)return;const sub=BackHandler.addEventListener('hardwareBackPress',()=>{settle(false);return true});return()=>sub.remove()},[open,disabled]);
  const pan=useMemo(()=>PanResponder.create({
   onMoveShouldSetPanResponderCapture:(_,g)=>{
-   const p=props.current;if(p.disabled||g.numberActiveTouches!==1||Math.abs(g.dx)<12||Math.abs(g.dx)<Math.abs(g.dy)*1.5)return false;
-   return p.open?g.dx<0:g.x0<=56&&g.dx>0;
+   const p=props.current;return drawerGesture(p.open,p.disabled,g.numberActiveTouches,g.x0,g.dx,g.dy);
   },
   onPanResponderGrant:()=>{++serial.current;dragging.current=true;progress.stopAnimation();origin.current=position.current;setVisible(true);Keyboard.dismiss()},
   onPanResponderMove:(_,g)=>progress.setValue(clamp(origin.current+g.dx/Math.max(1,props.current.width))),
@@ -30,7 +30,7 @@ export default function SwipeDrawer({open,onChange,disabled,children,menu,backgr
  }),[]);
  const translateX=progress.interpolate({inputRange:[0,1],outputRange:[-width,0]});
  return <View style={s.root} {...pan.panHandlers}>
-  <View style={s.root} pointerEvents={visible?'none':'auto'} accessibilityElementsHidden={open} importantForAccessibility={open?'no-hide-descendants':'auto'}>{children}</View>
+  <View style={s.root} pointerEvents={visible&&!disabled?'none':'auto'} accessibilityElementsHidden={open} importantForAccessibility={open?'no-hide-descendants':'auto'}>{children}</View>
   {visible&&!disabled&&<View style={StyleSheet.absoluteFill} pointerEvents="box-none">
    <Animated.View style={[StyleSheet.absoluteFill,{backgroundColor:'#000',opacity:progress.interpolate({inputRange:[0,1],outputRange:[0,.38]})}]}><Pressable style={s.root} accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={()=>settle(false)}/></Animated.View>
    <Animated.View accessibilityViewIsModal={open} style={[s.drawer,{width,backgroundColor:background,transform:[{translateX}]}]}>{menu}</Animated.View>

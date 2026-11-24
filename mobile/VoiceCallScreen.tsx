@@ -1,10 +1,10 @@
 import React,{useMemo,useRef,useState,type ReactNode} from 'react';
 import {View,Text,Pressable,PanResponder,StyleSheet,Keyboard} from 'react-native';
 import type {useVoiceCall} from './useVoiceCall';
+import {sheetSnap} from './interactionPolicy';
 type Call=ReturnType<typeof useVoiceCall>;
 export const duration=(s:number)=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 const label=(call:Call)=>call.phase==='thinking'?'생각하고 있어요':call.phase==='speaking'?'말하고 있어요':call.muted?'마이크 꺼짐':call.phase==='listening'?'듣고 있어요':'잠시 대기 중';
-const stops=[0,.5,1];
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
 export default function VoiceCallScreen({call,name,children,error}:{call:Call;name:string;children:ReactNode;error:string}){
  const [ratio,setRatio]=useState(0),[height,setHeight]=useState(0);
@@ -16,8 +16,8 @@ export default function VoiceCallScreen({call,name,children,error}:{call:Call;na
   onMoveShouldSetPanResponder:(_,g)=>Math.abs(g.dy)>5&&Math.abs(g.dy)>Math.abs(g.dx),
   onPanResponderGrant:()=>{origin.current=ratioRef.current},
   onPanResponderMove:(_,g)=>change(origin.current-g.dy/Math.max(120,heightRef.current-38)),
-  onPanResponderRelease:(_,g)=>{const projected=clamp(ratioRef.current-g.vy*.12);snap(stops.reduce((a,b)=>Math.abs(a-projected)<=Math.abs(b-projected)?a:b))},
-  onPanResponderTerminate:()=>snap(stops.reduce((a,b)=>Math.abs(a-ratioRef.current)<=Math.abs(b-ratioRef.current)?a:b)),
+  onPanResponderRelease:(_,g)=>{snap(sheetSnap(ratioRef.current,g.vy))},
+  onPanResponderTerminate:()=>snap(sheetSnap(ratioRef.current)),
  }),[]);
  const control=(title:string,glyph:string,action:()=>void,selected=false,disabled=false,red=false)=><Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{disabled,selected}} disabled={disabled} onPress={action} style={[s.control,{backgroundColor:red?'#C84141':selected?'#B5E4BE':'#304D3A',opacity:disabled?.45:1}]}><Text style={{fontSize:22,color:selected?'#14261D':'#fff'}}>{glyph}</Text><Text numberOfLines={1} style={{fontSize:11,fontWeight:'600',color:selected?'#14261D':'#fff'}}>{title}</Text></Pressable>;
  return <View style={s.page}>

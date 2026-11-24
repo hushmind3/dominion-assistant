@@ -14,6 +14,7 @@ export async function loadJournal(account:string):Promise<Journal>{
 }
 export async function saveJournal(account:string,j:Journal){
  const f=await file(account),data=JSON.stringify({...j,messages:j.messages.slice(-200).map(m=>({...m,text:m.text.slice(0,16000)}))});
+ if(!f.exists)f.create();
  f.write(data);
 }
 export async function deleteJournal(account:string){const f=await file(account);if(f.exists)f.delete()}
