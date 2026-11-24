@@ -5,7 +5,7 @@ import type {Memory} from './memoryPolicy';
 import {File,Paths} from 'expo-file-system';
 import {digestStringAsync,CryptoDigestAlgorithm} from 'expo-crypto';
 import {openDatabaseAsync,type SQLiteDatabase} from 'expo-sqlite';
-export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string;localOnly?:boolean;googleJob?:{id:string;operation:import('./googleTools').GoogleTool};jobStatus?:string};
+export type Message={id:string;role:'user'|'assistant';text:string;time:number;status?:'pending'|'failed';deviceId?:string;requestId?:string;attachment?:string;localOnly?:boolean;googleJob?:{id:string;operation:import('./googleTools').GoogleTool};jobStatus?:string;sources?:import('./webResearch').SearchSource[]};
 export type Journal={messages:Message[];model:string;deviceId?:string;profile?:Profile;offlineRecognition?:boolean;callPreferences?:CallPreferences;voice?:VoicePreference;memory?:Memory[];memoryEnabled?:boolean};
 const empty=():Journal=>({messages:[],model:'dominion/free-auto'});
 const opened=new Map<string,Promise<SQLiteDatabase>>();
