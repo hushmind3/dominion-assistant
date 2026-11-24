@@ -28,6 +28,7 @@ UI_TOKEN = secrets.token_hex(32)
 class Conversation:
     def __init__(self, state_path=None, chat_client=None):
         self.lock = threading.RLock()
+        self.on_change=lambda:None
         self.pending = None
         self.answers = OrderedDict()
         self.history = deque(maxlen=3)
@@ -58,6 +59,7 @@ class Conversation:
 
     def persist(self):
         self.inbox.save({'pending': self.pending, 'answers': list(self.answers.items()), 'history': list(self.history), 'last': self.last, 'mobileTurns': self.mobile_turns, 'phoneCalls': self.phone_calls, 'profile':self.profile})
+        self.on_change()
 
     def submit(self, text, source, request_id=None, kind='task', phone_id=None, objective=None, attachment_id=None):
         if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > 6000:
@@ -347,6 +349,7 @@ class Conversation:
 conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ == '__main__' else None)
 mobile_access = MobileAccess(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'mobile-access.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
 cloud_link = CloudLink(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'cloud-link.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
+conversation.on_change=cloud_link.changed
 phone_lock = threading.RLock()
 phone_config = None
 mobile_voice_config = None
@@ -678,9 +681,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200,cloud_link.disable())
             elif self.path == '/mobile-admin/chat-config':
                 conversation.chat_client.configure(data)
+                cloud_link.changed()
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/chat-disable':
                 conversation.chat_client.clear()
+                cloud_link.changed()
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/voice-config':
                 configure_mobile_voice(data)
@@ -696,9 +701,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/phone-config':
                 configure_phone(data)
+                cloud_link.changed()
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/phone-disable':
                 with phone_lock: phone_config = None
+                cloud_link.changed()
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/phone-reviewed':
                 if data.get('confirmed') is not True: raise ValueError('통화 종료 확인이 필요합니다.')

@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install document parser
-        run: python3 -m pip install 'pypdf==7.1.1'
+        run: python3 -m pip install 'pypdf==7.1.1' 'websockets>=16,<18'
       - name: Offline protocol tests
         run: |
           python3 -m unittest discover -s . -p 'test_*.py'
