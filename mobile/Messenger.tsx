@@ -1,0 +1,108 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {Alert,AppState,FlatList,KeyboardAvoidingView,Modal,Platform,Pressable,SafeAreaView,ScrollView,StyleSheet,Text,TextInput,View,useColorScheme} from 'react-native';
+import {randomUUID} from 'expo-crypto';
+import {ExpoSpeechRecognitionModule,useSpeechRecognitionEvent} from 'expo-speech-recognition';
+import * as Speech from 'expo-speech';
+import {cloud,loadAccount,saveAccount,loginStart,loginStatus,openLogin,logout,clearAccount,devices,subscribeRelay,relay,CloudApiError,type CloudAccount,type Device,type Flight} from './cloud';
+import {loadJournal,saveJournal,deleteJournal,type Journal,type Message} from './messengerStore';
+import {choosePhoto,chooseDocument,type DraftAttachment} from './attachments';
+import {notificationPermission,taskNotice} from './deviceActions';
+import PhonePanel from './PhonePanel';
+import PlannerPanel from './PlannerPanel';
+import type {VoiceSession} from './AssistantChat';
+type Props={onCall:(session:VoiceSession)=>void;onLegacy:()=>void};
+type Model={id:string;name:string;free:boolean};
+type Panel='settings'|'phone'|'planner'|null;
+const blank=():Journal=>({messages:[],model:'dominion/free-auto'});
+export default function Messenger({onCall,onLegacy}:Props){
+ const dark=useColorScheme()==='dark',c={bg:dark?'#111815':'#F3F5F1',card:dark?'#1D2722':'#FFFFFF',ink:dark?'#EFF5F0':'#17251D',muted:dark?'#A4B5AA':'#647369',accent:dark?'#A5D5A1':'#286744',mine:dark?'#294638':'#DBEEDF',line:dark?'#35443B':'#DFE6E0'};
+ const [account,setAccount]=useState<CloudAccount|null>(null),[loading,setLoading]=useState(true),[waiting,setWaiting]=useState(false),[error,setError]=useState(''),[journal,setJournal]=useState<Journal>(blank),[rows,setRows]=useState<Device[]>([]),[models,setModels]=useState<Model[]>([]),[draft,setDraft]=useState(''),[busy,setBusy]=useState(false),[listening,setListening]=useState(false),[panel,setPanel]=useState<Panel>(null),[attachment,setAttachment]=useState<DraftAttachment|null>(null),[alerts,setAlerts]=useState(false),[phoneRev,setPhoneRev]=useState(0),[pcTask,setPcTask]=useState(false);
+ const owner=useRef<CloudAccount|null>(null),state=useRef<Journal>(blank()),epoch=useRef(0),flight=useRef<Flight|null>(null),inflight=useRef(false),alive=useRef(true),fg=useRef(true),list=useRef<FlatList<Message>>(null),writeQueue=useRef(Promise.resolve()),pcChecking=useRef(false),pcDirty=useRef(false),alertRef=useRef(false);
+ alertRef.current=alerts;
+ const commit=(j:Journal)=>{state.current=j;setJournal(j);const id=owner.current?.accountId;if(id)writeQueue.current=writeQueue.current.catch(()=>{}).then(()=>saveJournal(id,j)).catch(()=>{if(owner.current?.accountId===id)setError('대화 기록 저장 실패')})};
+ const append=(m:Message)=>commit({...state.current,messages:[...state.current.messages,m].slice(-200)});
+ const change=(id:string,patch:Partial<Message>)=>commit({...state.current,messages:state.current.messages.map(m=>m.id===id?{...m,...patch}:m)});
+ const install=async(a:CloudAccount)=>{
+  const g=++epoch.current;setLoading(true);setError('');
+  try{const me=await cloud('/v1/me',undefined,a.token);if(me.account_id!==a.accountId)throw Error('계정 불일치');const j=await loadJournal(a.accountId);
+   if(!alive.current||g!==epoch.current)return;owner.current=a;state.current=j;setJournal(j);setAccount(a);setRows([]);setPanel(null);
+   void cloud('/v1/models',undefined,a.token).then(x=>{if(epoch.current===g)setModels((x.data||[]).filter((m:Model)=>m.free===true))}).catch(()=>{});
+  }catch(e){if(g===epoch.current){if(e instanceof CloudApiError&&e.status===401)await clearAccount();setError((e as Error).message)}}finally{if(g===epoch.current)setLoading(false)}
+ };
+ useEffect(()=>{alive.current=true;void loadAccount().then(a=>a?install(a):setLoading(false)).catch(e=>{setError(e.message);setLoading(false)});const sub=AppState.addEventListener('change',s=>{fg.current=s==='active';if(!fg.current){ExpoSpeechRecognitionModule.abort();void Speech.stop()}});return()=>{alive.current=false;epoch.current++;flight.current=null;sub.remove();ExpoSpeechRecognitionModule.abort();void Speech.stop()}},[]);
+ const signin=async()=>{if(waiting)return;setWaiting(true);setError('');try{const f=await loginStart();flight.current=f;await openLogin(f);const end=Date.now()+f.expires_in*1000;
+  while(alive.current&&flight.current===f&&Date.now()<end){const a=await loginStatus(f);if(a){if(flight.current!==f)return;await saveAccount(a);if(flight.current===f)await install(a);return}await new Promise(r=>setTimeout(r,2500))}
+ }catch(e){if(alive.current)setError((e as Error).message)}finally{if(alive.current)setWaiting(false)}};
+ const signout=async()=>{const a=owner.current;epoch.current++;owner.current=null;flight.current=null;setAccount(null);setRows([]);setJournal(blank());state.current=blank();setPanel(null);setDraft('');setAttachment(null);setPcTask(false);setModels([]);try{await writeQueue.current;if(a)await logout(a)}catch(e){setError((e as Error).message)}};
+ const refreshPC=async(a:CloudAccount,d:Device)=>{
+  if(pcChecking.current){pcDirty.current=true;return}pcChecking.current=true;const g=epoch.current;
+  try{do{pcDirty.current=false;const h=await relay(a.token,d.id,'history');if(g!==epoch.current||state.current.deviceId!==d.id)return;
+   const current=state.current.messages;const merged=[...current];let changed=false;
+   for(const t of h.turns||[]){
+    if(!t.requestId||typeof t.text!=='string')continue;
+    const uid='pc-user:'+d.id+':'+t.requestId,aid='pc-answer:'+d.id+':'+t.requestId;
+    if(!merged.some(m=>m.id===uid||m.role==='user'&&m.requestId===t.requestId&&m.deviceId===d.id)){merged.push({id:uid,role:'user',text:t.text,time:t.createdAt,requestId:t.requestId,deviceId:d.id});changed=true}
+    const text=t.answer||t.error||({queued:'요청을 받았습니다.',running:'작업하고 있습니다.',awaiting_approval:'PC에서 승인을 기다리고 있습니다.'} as Record<string,string>)[t.status]||'작업 상태: '+t.status;
+    const status:Message['status']=['queued','running','awaiting_approval'].includes(t.status)?'pending':t.status==='completed'?undefined:'failed';
+    const idx=merged.findIndex(m=>m.id===aid);const m:Message={id:aid,role:'assistant',text,time:t.createdAt+1,requestId:t.requestId,deviceId:d.id,status};
+    if(idx<0||merged[idx].text!==text||merged[idx].status!==status){if(idx>=0){if(merged[idx].status==='pending'&&!status&&alertRef.current&&fg.current)void taskNotice(true).catch(()=>{});merged[idx]=m}else merged.push(m);changed=true}
+   }
+   if(changed)commit({...state.current,messages:merged.sort((a,b)=>a.time-b.time).slice(-200)});
+  }while(pcDirty.current&&g===epoch.current)}catch(e){if(g===epoch.current&&!(e instanceof CloudApiError&&e.status===503))setError((e as Error).message)}finally{pcChecking.current=false}
+ };
+ useEffect(()=>{if(!account)return;let stop=false,off:undefined|(()=>void);const g=epoch.current;
+  void(async()=>{try{const conf=await cloud('/v1/public-config');if(stop||g!==epoch.current||!conf.assistant_link)return;
+   const initial=await devices(account);if(stop||g!==epoch.current)return;setRows(initial);
+   off=subscribeRelay(account.token,e=>{if(stop||g!==epoch.current)return;
+    if(e.type==='devices'&&e.devices){setRows(e.devices);const selected=e.devices.find(d=>d.id===state.current.deviceId&&d.online);if(selected)void refreshPC(account,selected)}
+    if(e.type==='changed'&&e.deviceId===state.current.deviceId){const d={id:e.deviceId,name:'PC',online:true,last_seen:0};void refreshPC(account,d);setPhoneRev(x=>x+1)}
+    if(e.type==='offline')setRows(v=>v.map(d=>({...d,online:false})));
+   });
+  }catch{/* Cloud chat does not depend on remote transport. */}})();
+  const sub=AppState.addEventListener('change',s=>{if(s==='active'&&!stop)void devices(account).then(ds=>{if(!stop){setRows(ds);const d=ds.find(x=>x.id===state.current.deviceId&&x.online);if(d)void refreshPC(account,d)}}).catch(()=>{})});
+  return()=>{stop=true;off?.();sub.remove()}
+ },[account]);
+ const selected=rows.find(d=>d.id===journal.deviceId),online=selected?.online===true;
+ const choosePC=(d:Device)=>{commit({...state.current,deviceId:d.id});if(account&&d.online)void refreshPC(account,d)};
+ const send=async()=>{const a=owner.current,text=draft.trim()||(attachment?'첨부 내용을 확인해 줘.':'');if(!a||!text||inflight.current)return;
+  if((pcTask||attachment)&&!online){setError('PC 작업 또는 첨부 분석은 연결된 PC가 필요합니다.');return}
+  const g=epoch.current,id=randomUUID(),d=selected,att=attachment,task=pcTask||!!att;
+  inflight.current=true;setBusy(true);setError('');setDraft('');setAttachment(null);setPcTask(false);
+  append({id,role:'user',text,time:Date.now(),status:'pending',attachment:att?.name,deviceId:task?d?.id:undefined});
+  try{
+   if(task&&d){
+    let attachmentId:string|undefined;if(att){const x=await relay(a.token,d.id,'attachment',{name:att.name,mime:att.mime,base64:att.base64,focus:text});attachmentId=x.id}
+    const t=await relay(a.token,d.id,'send',{clientId:id,text,kind:'task',attachmentId});if(g!==epoch.current)return;change(id,{status:undefined,requestId:t.requestId});void refreshPC(a,d);
+   }else{
+    const history=state.current.messages.filter(m=>m.id!==id&&!m.status&&!m.deviceId).slice(-16).map(m=>({role:m.role,content:m.text.slice(0,3000)}));
+    const result=await cloud('/v1/chat/completions',{model:state.current.model,messages:[{role:'system',content:'당신은 DOMINION 개인 AI 비서입니다. 자연스럽게 대화하세요. PC 작업, 전화, 알림을 실제 실행하지 않았다면 실행했다고 말하지 마세요.'},...history,{role:'user',content:text}],stream:false,max_tokens:2048},a.token,90000);
+    const answer=result.choices?.[0]?.message?.content;if(typeof answer!=='string'||!answer.trim())throw Error('빈 모델 응답');
+    if(g!==epoch.current)return;change(id,{status:undefined});append({id:randomUUID(),role:'assistant',text:answer,time:Date.now()});
+   }
+  }catch(e){if(g===epoch.current){change(id,{status:'failed'});setError((e as Error).message);if(e instanceof CloudApiError&&e.status===401)setError('로그인이 만료되었습니다. 설정에서 다시 로그인하세요.')}}
+  finally{inflight.current=false;if(g===epoch.current)setBusy(false)}
+ };
+ const call=()=>{const a=owner.current,d=selected;if(!a||!d?.online){setPanel('settings');setError('인터넷 통화는 현재 음성 서비스가 설정된 PC에 연결해야 합니다.');return}if(inflight.current)return;
+  Alert.alert('AI 비서에게 전화','인터넷 음성 통화입니다. 설정한 음성 API 사용료는 발생할 수 있습니다.',[{text:'취소',style:'cancel'},{text:'전화 걸기',onPress:()=>void(async()=>{if(inflight.current)return;inflight.current=true;setBusy(true);const voiceId=randomUUID(),g=epoch.current;
+   const stop=async()=>{await relay(a.token,d.id,'voice/stop',{voiceId})};
+   try{const r=await relay(a.token,d.id,'voice/start',{voiceId,confirmed:true});if(g!==epoch.current){await stop();return}if(!r.pairing)throw Error('음성 연결 정보 없음');onCall({pairing:JSON.stringify(r.pairing),stop})}catch(e){await stop().catch(()=>{});setError((e as Error).message)}finally{inflight.current=false;if(g===epoch.current)setBusy(false)}
+  })()}]);
+ };
+ useSpeechRecognitionEvent('start',()=>setListening(true));useSpeechRecognitionEvent('end',()=>setListening(false));useSpeechRecognitionEvent('error',e=>{setListening(false);if(e.error!=='aborted')setError(e.message)});useSpeechRecognitionEvent('result',e=>{if(fg.current&&e.results[0]?.transcript)setDraft(e.results[0].transcript)});
+ const mic=async()=>{try{if(listening){ExpoSpeechRecognitionModule.stop();return}void Speech.stop();if(!(await ExpoSpeechRecognitionModule.requestPermissionsAsync()).granted)throw Error('마이크 권한을 허용하세요.');if(!ExpoSpeechRecognitionModule.isRecognitionAvailable())throw Error('음성 인식 서비스를 사용할 수 없습니다.');ExpoSpeechRecognitionModule.start({lang:'ko-KR',interimResults:true,continuous:false,maxAlternatives:1})}catch(e){setError((e as Error).message)}};
+ const pick=async(fn:()=>Promise<DraftAttachment|null>)=>{try{const x=await fn();if(x)setAttachment(x)}catch(e){setError((e as Error).message)}};
+ const actions=()=>Alert.alert('비서에게 보내기','필요한 기능을 선택하세요.',[{text:'사진 / 파일',onPress:()=>Alert.alert('첨부','',[{text:'카메라',onPress:()=>void pick(()=>choosePhoto(true))},{text:'사진',onPress:()=>void pick(()=>choosePhoto())},{text:'파일',onPress:()=>void pick(chooseDocument)},{text:'취소',style:'cancel'}])},{text:'PC에 업무 맡기기',onPress:()=>{if(online)setPcTask(true);else setPanel('settings')}},{text:'대신 전화하기',onPress:()=>setPanel('phone')},{text:'일정 및 알림',onPress:()=>setPanel('planner')},{text:'취소',style:'cancel'}]);
+ const button=(label:string,fn:()=>void,primary=false,disabled=false)=><Pressable accessibilityRole="button" onPress={fn} disabled={disabled} style={[s.btn,{backgroundColor:primary?c.accent:c.card,borderColor:c.line,opacity:disabled?.45:1}]}><Text style={{color:primary?(dark?'#152418':'#fff'):c.ink,fontWeight:'600'}}>{label}</Text></Pressable>;
+ const icon=(label:string,glyph:string,fn:()=>void,primary=false)=><Pressable accessibilityLabel={label} accessibilityRole="button" onPress={fn} style={[s.icon,{backgroundColor:primary?c.accent:c.card}]}><Text style={{fontSize:23,color:primary?(dark?'#152418':'#fff'):c.accent}}>{glyph}</Text></Pressable>;
+ if(!account)return <SafeAreaView style={[s.page,{backgroundColor:c.bg}]}><View style={s.welcome}><View style={[s.hero,{backgroundColor:c.mine}]}><Text style={{fontSize:52,color:c.accent}}>✦</Text></View><Text style={[s.title,{color:c.ink,fontSize:30}]}>DOMINION</Text><Text style={{color:c.muted,textAlign:'center',fontSize:17,lineHeight:25}}>언제든 이야기할 수 있는 나의 AI 비서</Text>{button(loading?'계정 확인 중…':waiting?'Google 인증 중…':'Google로 시작하기',()=>void signin(),true,loading||waiting)}{waiting&&button('취소',()=>{flight.current=null;setWaiting(false)})}{button('고급 PC 직접 연결',onLegacy)}{!!error&&<Text style={{color:'#B64D40'}}>{error}</Text>}</View></SafeAreaView>;
+ return <SafeAreaView style={[s.page,{backgroundColor:c.bg}]}><KeyboardAvoidingView style={s.page} behavior={Platform.OS==='ios'?'padding':undefined}>
+  <View style={[s.header,{backgroundColor:c.card,borderColor:c.line}]}><View style={[s.avatar,{backgroundColor:c.mine}]}><Text style={{fontSize:25,color:c.accent}}>✦</Text></View><View style={{flex:1}}><Text style={[s.title,{color:c.ink}]}>나의 AI 비서</Text><Text style={{color:c.muted,fontSize:12}}>Cloud · {online?selected?.name+' 연결됨':'PC 연결 선택'}</Text></View>{icon('AI에게 전화하기','☎',call)}{icon('설정','⋯',()=>setPanel('settings'))}</View>
+  <FlatList ref={list} data={journal.messages} keyExtractor={m=>m.id} contentContainerStyle={s.timeline} keyboardShouldPersistTaps="handled" onContentSizeChange={()=>list.current?.scrollToEnd({animated:false})} ListEmptyComponent={<View style={s.empty}><Text style={{fontSize:44,color:c.accent}}>✦</Text><Text style={[s.title,{color:c.ink}]}>무엇을 도와드릴까요?</Text><Text style={{color:c.muted,textAlign:'center'}}>PC 없이도 대화할 수 있습니다.</Text></View>} renderItem={({item:m})=><View style={{alignItems:m.role==='user'?'flex-end':'flex-start',gap:5}}><View style={[s.bubble,{backgroundColor:m.role==='user'?c.mine:c.card}]}>{!!m.attachment&&<Text style={{color:c.muted,fontSize:12}}>첨부 · {m.attachment}</Text>}<Text selectable style={{color:c.ink,fontSize:16,lineHeight:24}}>{m.text}</Text>{m.role==='assistant'&&!m.status&&<Pressable accessibilityLabel="읽어주기" onPress={()=>Speech.speak(m.text,{language:'ko-KR'})}><Text style={{color:c.accent,fontSize:12}}>♪ 듣기</Text></Pressable>}</View><Text style={{fontSize:11,color:c.muted}}>{new Date(m.time).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}{m.status==='pending'?' · 진행 중':m.status==='failed'?' · 확인 필요':''}</Text></View>}/>
+  {!!error&&<Pressable onPress={()=>setError('')} style={{paddingHorizontal:16,paddingVertical:8}}><Text accessibilityRole="alert" style={{color:dark?'#FFB4A8':'#A43B30',fontSize:13}}>{error} ×</Text></Pressable>}
+  <View style={[s.composer,{backgroundColor:c.card,borderColor:c.line}]}>{(pcTask||attachment)&&<View style={s.row}><Text style={{flex:1,color:c.accent}}>{attachment?attachment.name:'PC 업무 요청'}</Text>{icon('선택 취소','×',()=>{setAttachment(null);setPcTask(false)})}</View>}<View style={s.row}>{icon('첨부 및 업무','＋',actions)}<TextInput multiline maxLength={6000} value={draft} onChangeText={setDraft} placeholder={listening?'듣고 있습니다…':'메시지를 입력하세요'} placeholderTextColor={c.muted} style={[s.input,{backgroundColor:c.bg,color:c.ink}]}/>{icon(listening?'음성 인식 중지':'음성 입력',listening?'■':'🎙',()=>void mic())}{(draft.trim()||attachment)&&icon('전송','↑',()=>void send(),true)}</View>{busy&&<Text style={{color:c.muted,fontSize:12}}>비서가 처리하고 있습니다…</Text>}</View>
+  <Modal visible={panel!==null} animationType="slide" onRequestClose={()=>setPanel(null)}><SafeAreaView style={[s.page,{backgroundColor:c.bg}]}><View style={[s.header,{backgroundColor:c.card,borderColor:c.line}]}>{icon('닫기','‹',()=>setPanel(null))}<Text style={[s.title,{color:c.ink}]}>{panel==='settings'?'비서 설정':panel==='phone'?'전화':'일정'}</Text></View>
+   {panel==='planner'?<PlannerPanel/>:panel==='phone'?(online&&selected?<PhonePanel request={(path,body)=>relay(account.token,selected.id,path,body)} onVoice={call} eventDriven revision={phoneRev}/>:<View style={s.empty}><Text style={{color:c.muted}}>다른 사람에게 전화하려면 SIP가 설정된 PC를 선택하세요.</Text>{button('PC 선택',()=>setPanel('settings'))}</View>):<ScrollView contentContainerStyle={{padding:18,gap:12}}><Text style={[s.title,{color:c.ink}]}>AI 모델</Text>{(models.length?models:[{id:'dominion/free-auto',name:'DOMINION Free Auto',free:true}]).map(m=><View key={m.id}>{button((journal.model===m.id?'✓ ':'')+m.name,()=>commit({...state.current,model:m.id}),journal.model===m.id)}</View>)}<Text style={[s.title,{color:c.ink}]}>내 PC · 선택 사항</Text>{!rows.length&&<Text style={{color:c.muted}}>등록된 PC가 없거나 원격 연결 서버가 준비되지 않았습니다. Cloud 대화에는 영향이 없습니다.</Text>}{rows.map(d=><View key={d.id}>{button((journal.deviceId===d.id?'✓ ':'')+d.name+(d.online?' · 온라인':' · 오프라인'),()=>choosePC(d),journal.deviceId===d.id)}</View>)}{button('PC 연결 선택 해제',()=>commit({...state.current,deviceId:undefined}))}{button(alerts?'앱 사용 중 작업 알림 켜짐':'작업 알림 켜기',()=>{if(alerts)setAlerts(false);else void notificationPermission().then(()=>setAlerts(true)).catch(e=>setError(e.message))})}{button('일정 및 알림',()=>setPanel('planner'))}{button('기존 PC 고급 설정',onLegacy)}{button('이 기기의 대화 삭제',()=>Alert.alert('기록 삭제','이 기기의 대화 기록을 지울까요?',[{text:'취소',style:'cancel'},{text:'삭제',onPress:()=>{commit({...state.current,messages:[]});void writeQueue.current.then(()=>deleteJournal(account.accountId)).catch(()=>{})}}]))}{button('로그아웃',()=>void signout())}<Text style={{color:c.muted,fontSize:12}}>대화 기록은 이 기기에 저장됩니다. Cloud 모델 사용량은 DOMINION 회원 한도를 공유합니다. PC 업무와 통화는 별도 연결이 필요합니다.</Text></ScrollView>}
+  </SafeAreaView></Modal>
+ </KeyboardAvoidingView></SafeAreaView>
+}
+const s=StyleSheet.create({page:{flex:1},welcome:{flex:1,justifyContent:'center',padding:30,gap:20},hero:{width:92,height:92,borderRadius:30,alignItems:'center',justifyContent:'center',alignSelf:'center'},title:{fontSize:20,fontWeight:'700'},header:{flexDirection:'row',alignItems:'center',gap:12,padding:12,borderBottomWidth:1},avatar:{width:44,height:44,borderRadius:22,alignItems:'center',justifyContent:'center'},timeline:{padding:16,gap:16,flexGrow:1},empty:{padding:32,alignItems:'center',gap:12},bubble:{padding:14,borderRadius:20,maxWidth:'88%',gap:7},composer:{padding:10,borderTopWidth:1,gap:5},row:{flexDirection:'row',alignItems:'center',gap:6},input:{flex:1,paddingHorizontal:14,paddingVertical:11,maxHeight:120,minHeight:44,borderRadius:22,fontSize:16},icon:{width:40,height:40,borderRadius:20,alignItems:'center',justifyContent:'center'},btn:{borderRadius:14,borderWidth:1,padding:14,alignItems:'center'}});

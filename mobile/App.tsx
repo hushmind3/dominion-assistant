@@ -4,6 +4,7 @@ import {AudioSession,registerGlobals} from '@livekit/react-native';
 import {Room,RoomEvent,ConnectionState} from 'livekit-client';
 import PersonalChat from './PersonalChat';
 import AssistantChat,{type VoiceSession} from './AssistantChat';
+import Messenger from './Messenger';
 
 registerGlobals();
 type Pairing={url:string;token:string;room:string;expiresAt:number};
@@ -16,9 +17,9 @@ function parse(raw:string):Pairing{
   return p;
 }
 export default function App(){
- const [mode,setMode]=useState<'assistant'|'voice'|'legacy'>('assistant');
+ const [mode,setMode]=useState<'messenger'|'assistant'|'voice'|'legacy'>('messenger');
  const [session,setSession]=useState<VoiceSession|null>(null);
- return mode==='assistant'?<AssistantChat onAdvanced={s=>{setSession(s||null);setMode('voice')}} onLegacy={()=>setMode('legacy')}/>:<View style={{flex:1}}>{mode==='voice'?<LiveKitApp session={session}/>:<PersonalChat onAdvanced={()=>{setSession(null);setMode('voice')}}/>}<Pressable onPress={()=>setMode('assistant')} style={{padding:16,alignItems:'center'}}><Text style={{color:'#3976d7'}}>비서 대화로 돌아가기</Text></Pressable></View>;
+ return mode==='messenger'?<Messenger onCall={s=>{setSession(s);setMode('voice')}} onLegacy={()=>setMode('assistant')}/>:mode==='assistant'?<View style={{flex:1}}><AssistantChat onAdvanced={s=>{setSession(s||null);setMode('voice')}} onLegacy={()=>setMode('legacy')}/><Pressable onPress={()=>setMode('messenger')} style={{padding:12,alignItems:'center'}}><Text style={{color:'#3976d7'}}>비서 메신저로 돌아가기</Text></Pressable></View>:<View style={{flex:1}}>{mode==='voice'?<LiveKitApp session={session}/>:<PersonalChat onAdvanced={()=>{setSession(null);setMode('voice')}}/>}<Pressable onPress={()=>setMode('messenger')} style={{padding:16,alignItems:'center'}}><Text style={{color:'#3976d7'}}>비서 대화로 돌아가기</Text></Pressable></View>;
 }
 function LiveKitApp({session}:{session:VoiceSession|null}){
   const dark=useColorScheme()==='dark',ink=dark?'#f1f4fa':'#182233';

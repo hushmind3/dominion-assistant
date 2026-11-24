@@ -64,3 +64,6 @@ The PC now opens an outbound authenticated WebSocket and blocks waiting for even
 
 ### Current shared Cloud contract
 Authentication now uses the current DOMINION main `/v1/apps/start`, `/connect`, `/v1/apps/status`, `/v1/me` and `dapp_` credentials. The PC requests `assistant_pc`, the mobile app requests `assistant_remote`; both refer to the same member record. No separate OAuth secret or assistant member database. The staged `assistant-cloud-link` branch adds these explicit permissions and the WebSocket transport to the current main gateway. Old experimental assistant account sessions require re-login. This code still requires the branch's migration and deployment before device registration works against production; no APK or deployment triggered.
+
+## Messenger-first mobile app
+The default entry is Messenger. Shared Cloud login opens chat without a PC. Free model catalog and completions use the existing Cloud API, with device-local, account-partitioned message history. Optional PC tasks, attachments and SIP calls are selected explicitly; ordinary chats never require the PC. The previous connection UI remains under advanced settings. Call button opens the LiveKit voice session. PC-independent realtime audio, native background incoming calls, server push, local STT/TTS and BYOK are separate follow-up work; no deployment or APK build.
