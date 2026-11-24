@@ -72,3 +72,6 @@ The in-app VoIP call screen now auto-connects after user confirmation, requests 
 
 ### Proactive task messages
 Committed task outcomes are queued by the PC, published to the shared Cloud inbox and delivered over socket invalidation and optional Expo push. There is no idle message polling. In-app clients fetch the inbox after reconnect/foreground/push. Push registration requires EXPO_PUBLIC_EAS_PROJECT_ID and the operator's native push credentials; no invented project ID. The PC outbox is bounded and currently memory-resident (unpublished notices can be lost on PC restart); Cloud inbox persists for 30 days. Background native incoming calls remain unimplemented.
+
+### Personal model and voice preferences
+The messenger supports explicitly enabled HTTPS OpenAI-compatible BYOK completions. Credentials are account-partitioned in SecureStore and never sent to DOMINION or mixed with its login token. Optional OS on-device speech recognition requests the platform's installed recognizer; availability varies, and this is not a bundled Sherpa engine. Local TTS uses the platform speech service. Personal profile/notes are included in the chosen model prompt. Model-proposed PC work or third-party phone requests only prepare UI after confirmation, never execute silently. The SIP panel still requires a configured PC and explicit number/purpose approval.
