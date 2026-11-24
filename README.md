@@ -114,3 +114,6 @@ When starting a web task the user may opt in to encrypted site-specific cookie r
 
 ### Browser file attachment
 When the browser agent finds a supported visible empty file input, the chat offers a PDF/JPG/PNG picker (up to 2 MiB). The user approves the exact file and target website; the server rechecks the target and assigns the file without putting bytes in model context or persisting the uploaded file. A subsequent page observation determines whether the site actually accepted it. Hidden/custom widgets may require manual handling. Native and live-site testing remain required.
+
+### PC-independent Gmail alerts
+The side menu and conversation support opt-in new email monitoring: all new inbox mail, Gmail IMPORTANT, or literal sender/subject conditions. The companion Cloud branch checks Gmail history at its existing 15-minute cron (no model calls), stores encrypted metadata alerts, and emits generic opt-in push notifications. The app merges alerts into the same conversation with stable mail IDs, and also refreshes cloud tasks when push arrives. Starting a watch creates a fresh baseline; expired history requires an explicit restart. The app does not change Gmail labels, delete, archive or send mail. Configure migration 0008, Google OAuth and optional Expo push credentials. Production and real account testing remain pending.
