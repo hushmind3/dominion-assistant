@@ -27,8 +27,11 @@ The new default mobile client uses the independent Assistant service, not the le
 
 For a local integration test:
 1. Install/start the updated Assistant image on a host supporting SDK v2, grant the required scope, and note its loopback service port.
-2. On the PC run `python3 lan_relay.py --bind <PC-private-IPv4> --target-port <assistant-loopback-port>`. This explicit relay forwards only five native mobile routes. Do not expose it on the public internet or forward router ports; this is trusted Wi-Fi HTTP, not encrypted remote access.
+2. On the PC run `python3 lan_relay.py --bind <PC-private-IPv4> --target-port <assistant-loopback-port>`. This explicit relay forwards only the allowlisted native mobile routes. Do not expose it on the public internet or forward router ports; this is trusted Wi-Fi HTTP, not encrypted remote access.
 3. In the Assistant web UI create a mobile pairing code, then enter the relay address and code in the mobile app. Pair codes expire after five minutes, tokens after 24 hours or service restart. The mobile app keeps its token in OS secure storage. Revocation does not cancel already queued/host work.
 4. Send a chat and a task; verify real host events and answers on the phone. Check that a second queued message survives service restart. Do not infer runtime success from an APK build alone.
 
-Phone/SIP, photo/file transfer, remote TLS transport, persistent device credentials across server restart, parallel execution and streaming remain separate development work. No host branches are modified by this release.
+Photo/file transfer, remote TLS transport, persistent device credentials across server restart, parallel execution and streaming remain separate development work. No host branches are modified by this release.
+
+### Mobile delegated calls
+In the local web UI fill the existing LiveKit/Deepgram/Cartesia settings and SIP outbound trunk, then enable mobile phone calling. The provider credentials stay in server memory, not on the phone. On the phone open the call panel, enter the E.164 number and purpose, and explicitly confirm the real call. The voice bridge uses the existing SIP transport, discloses that it is AI, submits caller utterances as tool-free chat, and records bounded transcripts and call status locally. Lost responses use the same call ID; uncertain call attempts are not automatically retried after service restart. The PC operator must verify uncertain calls in LiveKit before clearing the review state. Real provider audio, call quality, and billing need device testing. Calls currently require the single shared host lane to be idle.

@@ -54,3 +54,32 @@ class MobileTests(unittest.TestCase):
         self.assertNotIn('/mobile-admin/pair',ROUTES['POST'])
         self.assertTrue(private(ip_address('192.168.1.1')))
         self.assertFalse(private(ip_address('127.0.0.1')))
+
+    def test_phone_attempt_survives_restart_without_redial(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'state.json'
+            c=Conversation(path)
+            call,fresh=c.phone_begin('call-one','+821012345678','예약 문의')
+            self.assertTrue(fresh)
+            c=Conversation(path)
+            call,fresh=c.phone_begin('call-one','+821012345678','예약 문의')
+            self.assertFalse(fresh)
+            self.assertEqual(call['status'],'needs_review')
+            with self.assertRaises(ValueError):
+                c.phone_begin('call-one','+821012345678','changed')
+    def test_phone_chat_has_no_task_tools_and_records_dialogue(self):
+        c=Conversation()
+        c.phone_begin('call-one','+821012345678','예약 문의')
+        rid=c.submit('몇 시인가요?','live',kind='chat',phone_id='call-one',objective='예약 문의')
+        self.assertEqual(c.v2_request()['kind'],'chat')
+        self.assertIn('예약 문의',c.v2_request()['instruction'])
+        c.v2_event(event(rid,'completed','e'*64))
+        self.assertEqual(c.phone_history()[0]['transcript'][0]['answer'],'완료')
+    def test_mobile_context_survives_voice_reset(self):
+        c=Conversation()
+        t=c.mobile_submit({'clientId':'one','text':'My preference is tea','kind':'chat'})
+        c.v2_request()
+        c.v2_event(event(t['requestId'],'completed','f'*64))
+        c.reset()
+        c.mobile_submit({'clientId':'two','text':'What is my preference?','kind':'chat'})
+        self.assertIn('My preference is tea',c.v2_request()['instruction'])

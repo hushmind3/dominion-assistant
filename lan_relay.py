@@ -7,7 +7,7 @@ import http.client
 import ipaddress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ROUTES = {'GET': {'/mobile/v1/history'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect'}}
+ROUTES = {'GET': {'/mobile/v1/history','/mobile/v1/phone'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect','/mobile/v1/phone/start','/mobile/v1/phone/stop'}}
 MAX_BODY = 16384
 
 class Relay(BaseHTTPRequestHandler):

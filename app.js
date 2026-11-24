@@ -84,3 +84,7 @@ void update();setInterval(update,1500);
 
 $('mobilePair').onclick=async()=>{try{const r=await api('/mobile-admin/pair',{});$('mobileCode').value=r.code;$('mobilePairStatus').textContent='5분 안에 휴대폰에 입력하세요.';}catch(e){$('mobilePairStatus').textContent=e.message}};
 $('mobileRevoke').onclick=async()=>{try{await api('/mobile-admin/revoke',{});$('mobileCode').value='';$('mobilePairStatus').textContent='휴대폰 인증을 해제했습니다.';}catch(e){$('mobilePairStatus').textContent=e.message}};
+
+$('mobilePhoneEnable').onclick=async()=>{try{const config=Object.fromEntries(['url','sttKey','ttsKey','voice','language'].map(id=>[id,$(id).value.trim()]));Object.assign(config,{apiKey:$('lkKey').value.trim(),apiSecret:$('lkSecret').value.trim(),trunk:$('sipTrunk').value.trim()});await api('/mobile-admin/phone-config',config);['lkKey','lkSecret','sttKey','ttsKey'].forEach(id=>$(id).value='');$('mobilePhoneStatus').textContent='휴대폰 전화 기능 활성화';}catch(e){$('mobilePhoneStatus').textContent=e.message}};
+$('mobilePhoneDisable').onclick=async()=>{try{await api('/mobile-admin/phone-disable',{});$('mobilePhoneStatus').textContent='새 통화 시작을 차단했습니다. 진행 중 통화는 별도로 종료하세요.'}catch(e){$('mobilePhoneStatus').textContent=e.message}};
+$('mobilePhoneReview').onclick=async()=>{if(!confirm('LiveKit 콘솔에서 기존 통화가 모두 종료되었음을 확인했나요?'))return;try{await api('/mobile-admin/phone-reviewed',{confirmed:true});$('mobilePhoneStatus').textContent='이전 통화 확인 상태를 해제했습니다.'}catch(e){$('mobilePhoneStatus').textContent=e.message}};

@@ -57,7 +57,12 @@ async def run_live(conversation, config, stop, report=lambda state: None):
             if not isinstance(text, str) or not text.strip():
                 return
             try:
-                rid = conversation.submit(text, "live")
+                if config.get("phoneId"):
+                    rid = conversation.submit(text, "live", kind="chat", phone_id=config["phoneId"], objective=config["objective"])
+                elif mode in ("outbound","inbound"):
+                    rid = conversation.submit(text, "live", kind="chat")
+                else:
+                    rid = conversation.submit(text, "live")
             except ValueError:
                 await self.push_frame(TTSSpeakFrame("이전 답변을 기다리고 있습니다." if config["language"] == "ko" else "Waiting for the previous answer."))
                 return
@@ -80,7 +85,8 @@ async def run_live(conversation, config, stop, report=lambda state: None):
             if not stop.is_set():
                 await self.push_frame(TTSSpeakFrame("답변이 아직 준비되지 않았습니다. 도미니온 작업 상태를 확인하세요." if config["language"] == "ko" else "The answer is not ready. Check the DOMINION task."))
 
-    worker = PipelineWorker(Pipeline([transport.input(), stt, user, Dominion(), tts, transport.output()]),
+    dominion = Dominion()
+    worker = PipelineWorker(Pipeline([transport.input(), stt, user, dominion, tts, transport.output()]),
         params=PipelineParams(enable_metrics=True, enable_usage_metrics=True))
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
@@ -110,6 +116,12 @@ async def run_live(conversation, config, stop, report=lambda state: None):
             report("connected")
         if mode in ("outbound","inbound"):
             await worker.queue_frame(TTSSpeakFrame("안녕하세요, 도미니온 AI 음성 비서입니다." if config["language"]=="ko" else "Hello, this is the DOMINION AI voice assistant."))
+            if config.get("phoneId"):
+                try:
+                    rid = conversation.submit("통화 상대가 연결되었습니다. 통화 목적에 맞는 첫 질문 또는 인사를 하세요.", "live", kind="chat", phone_id=config["phoneId"], objective=config["objective"])
+                    dominion.create_task(dominion.wait_answer(rid))
+                except ValueError:
+                    stop.set()
 
     @transport.event_handler("on_participant_disconnected")
     async def left(transport, participant_id):
