@@ -10,7 +10,7 @@ export function mergeInbox(current:Message[], incoming:unknown):Message[]{
   if(i<0){out.push(entry);changed=true}
   else if(out[i].status==='pending'){out[i]={...out[i],...entry,status:undefined};changed=true}
  }
- return changed?out.sort((a,b)=>a.time-b.time).slice(-200):current;
+ return changed?out.sort((a,b)=>a.time-b.time):current;
 }
 export function drawerWidth(screenWidth:number){return Math.min(280,Math.max(0,screenWidth)*.68)}
 export function drawerGesture(open:boolean,disabled:boolean,touches:number,x:number,dx:number,dy:number){
