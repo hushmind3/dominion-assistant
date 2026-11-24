@@ -23,19 +23,26 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.ACCESS_LOCAL_NETWORK"
+        "android.permission.ACCESS_LOCAL_NETWORK",
+        "android.permission.CAMERA"
       ],
       "versionCode": 5,
-      "blockedPermissions": [
-        "android.permission.CAMERA"
-      ]
+      "blockedPermissions": []
     },
     "plugins": [
       "@livekit/react-native-expo-plugin",
       "@config-plugins/react-native-webrtc",
       "expo-speech-recognition",
       "./withPersonalLan.js",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "비서에게 사진을 보내기 위해 사진을 선택합니다.",
+          "cameraPermission": "비서에게 사진을 보내기 위해 카메라를 사용합니다.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

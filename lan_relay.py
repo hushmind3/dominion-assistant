@@ -5,10 +5,12 @@ Run on the PC, not in the managed container. Trusted Wi-Fi only (HTTP).
 import argparse
 import http.client
 import ipaddress
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ROUTES = {'GET': {'/mobile/v1/history','/mobile/v1/phone'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect','/mobile/v1/phone/start','/mobile/v1/phone/stop'}}
+ROUTES = {'GET': {'/mobile/v1/history','/mobile/v1/phone'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect','/mobile/v1/phone/start','/mobile/v1/phone/stop','/mobile/v1/attachment'}}
 MAX_BODY = 16384
+ATTACH_BODY = 6*1024*1024
 
 class Relay(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -16,19 +18,19 @@ class Relay(BaseHTTPRequestHandler):
 
     def forward(self):
         peer = ipaddress.ip_address(self.client_address[0])
-        if not private(peer) or self.headers.get('Origin') is not None or self.path not in ROUTES.get(self.command, set()):
+        if not private(peer) or self.headers.get('Origin') is not None or not (self.path in ROUTES.get(self.command,set()) or (self.command=='GET' and re.fullmatch(r'/mobile/v1/attachment/[a-f0-9]{64}',self.path))):
             self.send_error(403)
             return
         try:
             size = int(self.headers.get('Content-Length','0'))
-            if not 0 <= size <= MAX_BODY or self.headers.get('Transfer-Encoding'):
+            if not 0 <= size <= (ATTACH_BODY if self.path=='/mobile/v1/attachment' else MAX_BODY) or self.headers.get('Transfer-Encoding'):
                 self.send_error(413)
                 return
             body = self.rfile.read(size) if size else None
             headers = {'Host':f'127.0.0.1:{self.server.target_port}'}
             for name in ('Authorization','Content-Type'):
                 if self.headers.get(name): headers[name] = self.headers[name]
-            conn = http.client.HTTPConnection('127.0.0.1', self.server.target_port, timeout=10)
+            conn = http.client.HTTPConnection('127.0.0.1', self.server.target_port, timeout=85 if self.path=='/mobile/v1/attachment' else 10)
             try:
                 conn.request(self.command, self.path, body, headers)
                 response = conn.getresponse()
