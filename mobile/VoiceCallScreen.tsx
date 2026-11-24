@@ -2,11 +2,12 @@ import React,{useMemo,useRef,useState,type ReactNode} from 'react';
 import {View,Text,Pressable,PanResponder,StyleSheet,Keyboard} from 'react-native';
 import type {useVoiceCall} from './useVoiceCall';
 import {sheetSnap} from './interactionPolicy';
+import AssistantAvatar from './AssistantAvatar';
 type Call=ReturnType<typeof useVoiceCall>;
 export const duration=(s:number)=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 const label=(call:Call)=>call.phase==='thinking'?'생각하고 있어요':call.phase==='speaking'?'말하고 있어요':call.muted?'마이크 꺼짐':call.phase==='listening'?'듣고 있어요':'잠시 대기 중';
 const clamp=(v:number)=>Math.max(0,Math.min(1,v));
-export default function VoiceCallScreen({call,name,children,error}:{call:Call;name:string;children:ReactNode;error:string}){
+export default function VoiceCallScreen({call,name,avatar,children,error}:{call:Call;name:string;avatar?:string;children:ReactNode;error:string}){
  const [ratio,setRatio]=useState(0),[height,setHeight]=useState(0);
  const ratioRef=useRef(0),heightRef=useRef(0),origin=useRef(0);
  const change=(value:number)=>{const v=clamp(value);ratioRef.current=v;setRatio(v)};
@@ -21,12 +22,12 @@ export default function VoiceCallScreen({call,name,children,error}:{call:Call;na
  }),[]);
  const control=(title:string,glyph:string,action:()=>void,selected=false,disabled=false,red=false)=><Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{disabled,selected}} disabled={disabled} onPress={action} style={[s.control,{backgroundColor:red?'#C84141':selected?'#B5E4BE':'#304D3A',opacity:disabled?.45:1}]}><Text style={{fontSize:22,color:selected?'#14261D':'#fff'}}>{glyph}</Text><Text numberOfLines={1} style={{fontSize:11,fontWeight:'600',color:selected?'#14261D':'#fff'}}>{title}</Text></Pressable>;
  return <View style={s.page}>
-  <View style={s.top}><View style={s.miniAvatar}><Text style={{color:'#B5E4BE',fontSize:22}}>✦</Text></View><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={s.name}>{name}</Text><Text accessibilityLiveRegion="polite" style={s.dim}>{duration(call.elapsed)} · {label(call)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="채팅 크기 변경" onPress={cycle} style={s.toggle}><Text style={{color:'#B5E4BE',fontSize:20}}>⌨</Text></Pressable></View>
+  <View style={s.top}><AssistantAvatar id={avatar} size={40}/><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={s.name}>{name}</Text><Text accessibilityLiveRegion="polite" style={s.dim}>{duration(call.elapsed)} · {label(call)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="채팅 크기 변경" onPress={cycle} style={s.toggle}><Text style={{color:'#B5E4BE',fontSize:20}}>⌨</Text></Pressable></View>
   <View style={s.row}>{control(call.muted?'마이크 켜기':'음소거',call.muted?'⊘':'🎙',call.toggleMute,call.muted)}{control('말 멈추기','■',call.interrupt,false,call.phase!=='speaking')}{control(ratio<.25?'채팅 열기':ratio<.75?'채팅 확대':'채팅 접기',ratio<.75?'⌃':'⌄',cycle)}{control('통화 종료','☎',call.stop,false,false,true)}</View>
   {!!error&&<Text numberOfLines={2} accessibilityRole="alert" style={{color:'#FFB9AF',paddingHorizontal:12,paddingBottom:6,fontSize:12}}>{error}</Text>}
   <View style={{flex:1,minHeight:0}} onLayout={e=>{heightRef.current=e.nativeEvent.layout.height;setHeight(e.nativeEvent.layout.height)}}>
    <View style={{height:Math.max(0,height-38)*(1-ratio),overflow:'hidden',justifyContent:'center',alignItems:'center',gap:10,paddingHorizontal:20}}>
-    {ratio<.94&&<><View style={[s.avatar,{width:ratio>.25?60:104,height:ratio>.25?60:104}]}><Text style={{fontSize:ratio>.25?30:48,color:'#B5E4BE'}}>✦</Text></View><Text style={s.status}>{label(call)}</Text>{!!call.partial&&<Text numberOfLines={3} style={s.transcript}>{call.partial}</Text>}</>}
+    {ratio<.94&&<><AssistantAvatar id={avatar} size={ratio>.25?60:104}/><Text style={s.status}>{label(call)}</Text>{!!call.partial&&<Text numberOfLines={3} style={s.transcript}>{call.partial}</Text>}</>}
    </View>
    <View {...pan.panHandlers} style={s.handle}>
     <Pressable accessibilityRole="adjustable" accessibilityLabel="채팅창 높이" accessibilityValue={{min:0,max:100,now:Math.round(ratio*100)}} accessibilityActions={[{name:'increment',label:'채팅 확대'},{name:'decrement',label:'채팅 축소'}]} onAccessibilityAction={e=>snap(e.nativeEvent.actionName==='increment'?ratioRef.current<.25?.5:1:ratioRef.current>.75?.5:0)} onPress={cycle} style={{flex:1,alignItems:'center',justifyContent:'center',gap:4}}>

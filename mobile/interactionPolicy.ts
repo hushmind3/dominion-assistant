@@ -12,6 +12,7 @@ export function mergeInbox(current:Message[], incoming:unknown):Message[]{
  }
  return changed?out.sort((a,b)=>a.time-b.time).slice(-200):current;
 }
+export function drawerWidth(screenWidth:number){return Math.min(280,Math.max(0,screenWidth)*.68)}
 export function drawerGesture(open:boolean,disabled:boolean,touches:number,x:number,dx:number,dy:number){
  if(disabled||touches!==1||Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5)return false;
  return open?dx<0:x<=56&&dx>0;

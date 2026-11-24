@@ -1,11 +1,11 @@
 import React,{useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {Animated,BackHandler,Easing,Keyboard,PanResponder,Pressable,StyleSheet,useWindowDimensions,View} from 'react-native';
-import {drawerGesture} from './interactionPolicy';
+import {drawerGesture,drawerWidth} from './interactionPolicy';
 type Props={open:boolean;onChange:(open:boolean)=>void;disabled:boolean;children:ReactNode;menu:ReactNode;background:string};
 const clamp=(n:number)=>Math.max(0,Math.min(1,n));
 // Drawer progress is independent from navigation and call state.
 export default function SwipeDrawer({open,onChange,disabled,children,menu,background}:Props){
- const {width:screenWidth}=useWindowDimensions(),width=Math.min(320,screenWidth*.84);
+ const {width:screenWidth}=useWindowDimensions(),width=drawerWidth(screenWidth);
  const progress=useRef(new Animated.Value(0)).current;
  const [visible,setVisible]=useState(false);
  const props=useRef({open,onChange,disabled,width});props.current={open,onChange,disabled,width};
@@ -32,7 +32,7 @@ export default function SwipeDrawer({open,onChange,disabled,children,menu,backgr
  return <View style={s.root} {...pan.panHandlers}>
   <View style={s.root} pointerEvents={visible&&!disabled?'none':'auto'} accessibilityElementsHidden={open} importantForAccessibility={open?'no-hide-descendants':'auto'}>{children}</View>
   {visible&&!disabled&&<View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-   <Animated.View style={[StyleSheet.absoluteFill,{backgroundColor:'#000',opacity:progress.interpolate({inputRange:[0,1],outputRange:[0,.38]})}]}><Pressable style={s.root} accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={()=>settle(false)}/></Animated.View>
+   <Animated.View style={[StyleSheet.absoluteFill,{backgroundColor:'#000',opacity:progress.interpolate({inputRange:[0,1],outputRange:[0,.14]})}]}><Pressable style={s.root} accessibilityRole="button" accessibilityLabel="메뉴 닫기" onPress={()=>settle(false)}/></Animated.View>
    <Animated.View accessibilityViewIsModal={open} style={[s.drawer,{width,backgroundColor:background,transform:[{translateX}]}]}>{menu}</Animated.View>
   </View>}
  </View>

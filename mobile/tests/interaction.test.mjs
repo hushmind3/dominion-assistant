@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mergeInbox,drawerGesture,canListen,sheetSnap} from '../interactionPolicy.ts';
+import {mergeInbox,drawerGesture,drawerWidth,canListen,sheetSnap} from '../interactionPolicy.ts';
 test('inbox replaces pending task, preserves final reply and deduplicates',()=>{
  const pending={id:'pc-answer:d:r',role:'assistant',text:'작업 중',status:'pending',deviceId:'d',time:1};
  const notice={id:'task:r',deviceId:'d',text:'완료',time:2};
@@ -30,3 +30,7 @@ test('sheet snap is independent of mic state',()=>{
  assert.equal(canListen(true,false,false,'paused'),false);
  assert.equal(canListen(false,false,true,'paused'),false);
 });
+
+import {assistantName,avatarFor,AVATARS} from '../assistantIdentity.ts';
+test('drawer preserves a visible return area and accepts reverse swipe',()=>{for(const w of [320,360,400,768]){assert.ok(drawerWidth(w)<=w*.68);assert.ok(w-drawerWidth(w)>=w*.32-1)}assert.equal(drawerGesture(true,false,1,350,-60,5),true)});
+test('personal identity supports old profiles and rejects blank names',()=>{assert.equal(assistantName('  루나  '),'루나');assert.equal(assistantName(' '),'나의 AI 비서');assert.equal(avatarFor('unknown').id,'star');assert.equal(new Set(AVATARS.map(a=>a.id)).size,6)});
