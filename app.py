@@ -9,6 +9,7 @@ import uuid
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from plugin_sdk import PluginInbox, CAPABILITIES
 
 MAX_BODY = 512 * 1024
 ROOT = Path(__file__).resolve().parent
@@ -17,12 +18,22 @@ UI_TOKEN = secrets.token_hex(32)
 
 
 class Conversation:
-    def __init__(self):
+    def __init__(self, state_path=None):
         self.lock = threading.RLock()
         self.pending = None
         self.answers = OrderedDict()
         self.history = deque(maxlen=3)
         self.last = None
+        self.inbox = PluginInbox(state_path)
+        saved = self.inbox.state
+        if saved:
+            self.pending = saved.get('pending')
+            self.answers = OrderedDict(saved.get('answers', []))
+            self.history = deque(saved.get('history', []), maxlen=3)
+            self.last = saved.get('last')
+
+    def persist(self):
+        self.inbox.save({'pending': self.pending, 'answers': list(self.answers.items()), 'history': list(self.history), 'last': self.last})
 
     def submit(self, text, source):
         if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > 6000:
@@ -42,6 +53,8 @@ class Conversation:
             rid = str(uuid.uuid4())
             self.pending = {"requestId": rid, "instruction": instruction,
                             "text": text.strip(), "source": source}
+            self.inbox.progress = None
+            self.persist()
             return rid
 
     def reset(self):
@@ -50,6 +63,8 @@ class Conversation:
             self.answers.clear()
             self.history.clear()
             self.last = None
+            self.inbox.progress = None
+            self.persist()
 
     def request(self):
         with self.lock:
@@ -69,6 +84,7 @@ class Conversation:
             if previous:
                 if not hmac.compare_digest(previous["answerDigest"], digest):
                     raise ValueError("Conflicting duplicate answer")
+                self.persist()
                 return {"requestId": rid, "answerDigest": digest}
             if not self.pending or self.pending["requestId"] != rid:
                 raise ValueError("No matching pending request")
@@ -80,6 +96,7 @@ class Conversation:
                 self.answers.popitem(last=False)
             self.last = result
             self.pending = None
+            self.persist()
             return {"requestId": rid, "answerDigest": digest}
 
     def answer(self, rid):
@@ -90,16 +107,44 @@ class Conversation:
     def status(self):
         with self.lock:
             return {"pending": self.pending.copy() if self.pending else None,
-                    "last": self.last.copy() if self.last else None}
+                    "last": self.last.copy() if self.last else None, "progress": self.inbox.progress}
 
     def discard(self, rid):
         with self.lock:
             if not self.pending or self.pending["requestId"] != rid:
                 raise ValueError("Request changed")
+            if self.inbox.progress and not self.inbox.progress.get('terminal'):
+                raise ValueError('도미니온 작업이 진행 중입니다. PC 작업 화면에서 취소하세요.')
             self.pending = None
+            self.persist()
+
+    def v2_request(self):
+        with self.lock:
+            request = self.request()
+            return {**request, 'kind': 'task'} if request else None
+
+    def v2_event(self, data):
+        with self.lock:
+            ack, duplicate = self.inbox.validate(data, self.pending)
+            if duplicate:
+                self.persist()
+                return ack
+            self.inbox.progress = data.copy()
+            if data['terminal']:
+                rid = data['requestId']
+                if data['status'] == 'completed':
+                    answer = data.get('answer') or ''
+                    self.accept({'requestId':rid,'answer':answer,'answerDigest':hashlib.sha256(answer.encode()).hexdigest()})
+                else:
+                    message = data.get('error') or '작업이 중단되었습니다. 도미니온에서 결과를 확인하세요.'
+                    self.last = {'requestId':rid,'answer':message,'source':self.pending['source'],'status':data['status']}
+                    self.pending = None
+            self.inbox.remember(data)
+            self.persist()
+            return ack
 
 
-conversation = Conversation()
+conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ == '__main__' else None)
 live_lock = threading.Lock()
 live = {"state": "stopped"}
 live_stop = threading.Event()
@@ -197,7 +242,16 @@ class Handler(BaseHTTPRequestHandler):
         if not self.local_host():
             self.reply(403, {"error": "Local host required"})
             return
-        if self.path == "/dominion/v1/request":
+        if self.path in ("/dominion/v2/capabilities", "/dominion/v2/request"):
+            if not self.bridge_allowed():
+                self.reply(401, {"error":"Bridge authentication required"})
+                return
+            if self.path.endswith("/capabilities"):
+                self.reply(200, CAPABILITIES)
+            else:
+                request = conversation.v2_request()
+                self.reply(200 if request else 204, request)
+        elif self.path == "/dominion/v1/request":
             if not self.bridge_allowed():
                 self.reply(401, {"error": "Bridge authentication required"})
                 return
@@ -220,6 +274,12 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(403, {"error": "Local host required"})
             return
         try:
+            if self.path == "/dominion/v2/event":
+                if not self.bridge_allowed():
+                    self.reply(401, {"error":"Bridge authentication required"})
+                    return
+                self.reply(200, conversation.v2_event(self.body()))
+                return
             if self.path == "/dominion/v1/result":
                 if not self.bridge_allowed():
                     self.reply(401, {"error": "Bridge authentication required"})
@@ -254,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200, {"state": status})
             else:
                 self.reply(404, {"error": "Not found"})
+        except OSError:
+            self.reply(503, {"error":"Plugin state could not be saved"})
         except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
             self.reply(400, {"error": str(exc)[:300]})
 

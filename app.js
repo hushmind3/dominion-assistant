@@ -16,7 +16,8 @@ async function update(){
  try{
   const data=await api('/status');
   pendingId=data.pending?.requestId||'';
-  $('status').textContent=pendingId?'도미니온 답변 대기 중 · 작업 연결에서 진행을 확인하세요.':'대화할 준비가 되었습니다.';
+  const progress=data.progress;
+  $('status').textContent=pendingId?(progress?.approvalRequired?'PC 도미니온에서 작업 승인이 필요합니다.':progress?.status==='running'?'작업 진행 중 · '+(progress.tools?.length||0)+'개 도구 결과 확인':'도미니온 작업 대기 중'):(progress?.terminal&&progress.status!=='completed'?'작업 종료 · '+progress.status:'대화할 준비가 되었습니다.');
   const liveActive=!['stopped','failed'].includes(data.live.state);
   $('send').disabled=busy||!!pendingId||liveActive;
   $('discard').hidden=!pendingId;

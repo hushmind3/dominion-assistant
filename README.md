@@ -15,3 +15,6 @@ Existing migrated source retains its original Apache-2.0 license (LICENSE-UPSTRE
 
 ## Development
 Run `python3 -m unittest discover -s . -p 'test_*.py'`. In mobile/, run `npm install`, `npm run typecheck`, and `npm run apk`. The Dockerfile builds the voice service; a compatible DOMINION host supplies DOMINION_BRIDGE_TOKEN and polls the request/result protocol. No credentials are committed.
+
+## Common plugin SDK v2
+The assistant now implements the language-neutral host-pull capability, request and event endpoints, with persistent event acknowledgements in /data. It sends ordinary utterances as task requests; the host chooses the permitted tools, model and approvals. The web interface displays actual host progress. This is not a new mobile pairing implementation; the old LAN client still requires its prior host adapter. Container updates and installation use the independent package marketplace.
