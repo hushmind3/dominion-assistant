@@ -9,6 +9,7 @@ import re
 import time
 from mobile_gateway import MobileAccess
 from attachments import AttachmentStore, Vision, IMAGE_MIME
+from assistant_memory import DEFAULT_PROFILE, validate_profile, context as memory_context
 import uuid
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +31,7 @@ class Conversation:
         self.history = deque(maxlen=3)
         self.last = None
         self.mobile_turns = []
+        self.profile = dict(DEFAULT_PROFILE)
         self.attachments = AttachmentStore(Path(state_path).parent/'attachments' if state_path else None)
         self.phone_calls = []
         self.inbox = PluginInbox(state_path)
@@ -40,6 +42,7 @@ class Conversation:
             self.history = deque(saved.get('history', []), maxlen=3)
             self.last = saved.get('last')
             self.mobile_turns = saved.get('mobileTurns', [])
+            self.profile = validate_profile(saved.get('profile',DEFAULT_PROFILE))
             self.phone_calls = saved.get('phoneCalls', [])
             for call in self.phone_calls:
                 if call['status'] in ('starting','dialing','connected','stopping','waiting','running'):
@@ -47,7 +50,7 @@ class Conversation:
                     call['error'] = '서비스 재시작: 기존 통화 종료 여부를 LiveKit에서 확인하세요.'
 
     def persist(self):
-        self.inbox.save({'pending': self.pending, 'answers': list(self.answers.items()), 'history': list(self.history), 'last': self.last, 'mobileTurns': self.mobile_turns, 'phoneCalls': self.phone_calls})
+        self.inbox.save({'pending': self.pending, 'answers': list(self.answers.items()), 'history': list(self.history), 'last': self.last, 'mobileTurns': self.mobile_turns, 'phoneCalls': self.phone_calls, 'profile':self.profile})
 
     def submit(self, text, source, request_id=None, kind='task', phone_id=None, objective=None, attachment_id=None):
         if not isinstance(text, str) or not text.strip() or len(text.encode("utf-8")) > 6000:
@@ -57,10 +60,9 @@ class Conversation:
                 raise ValueError("이전 요청의 답변을 기다리고 있습니다.")
             # History is conversation data, not a new tool or authority grant.
             context = list(self.history)
-            if source == 'mobile':
-                context = [{'user':t['text'][:1500], 'assistant':t.get('answer','')[:1500]}
-                           for t in self.mobile_turns if t['status']=='completed'][-12:]
-            while context and len(json.dumps(context, ensure_ascii=False).encode()) > 6500:
+            if source == 'mobile' or (source == 'live' and not phone_id):
+                context = memory_context(text,self.mobile_turns,self.profile)
+            while isinstance(context,list) and context and len(json.dumps(context, ensure_ascii=False).encode()) > 6500:
                 context.pop(0)
             history = json.dumps(context, ensure_ascii=False)
             if phone_id:
@@ -222,7 +224,14 @@ class Conversation:
 
     def mobile_history(self):
         with self.lock:
-            return {'turns':[dict(t) for t in self.mobile_turns]}
+            return {'turns':[dict(t) for t in self.mobile_turns], 'profile':self.profile.copy()}
+
+    def set_profile(self,data):
+        profile=validate_profile(data)
+        with self.lock:
+            self.profile=profile
+            self.persist()
+            return profile.copy()
 
     def mobile_waiting(self):
         with self.lock:
@@ -268,7 +277,7 @@ class Conversation:
 
 
 conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ == '__main__' else None)
-mobile_access = MobileAccess()
+mobile_access = MobileAccess(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'mobile-access.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
 phone_lock = threading.RLock()
 phone_config = None
 live_lock = threading.Lock()
@@ -501,6 +510,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.body(ATTACH_BODY if self.path=='/mobile/v1/attachment' else MAX_BODY)
                 if self.path == '/mobile/v1/attachment':
                     self.reply(201,conversation.attachments.add(data))
+                elif self.path == '/mobile/v1/profile':
+                    self.reply(200,conversation.set_profile(data))
                 elif self.path == '/mobile/v1/send':
                     with live_lock:
                         if live['state'] not in ('stopped','failed'):

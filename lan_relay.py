@@ -8,7 +8,7 @@ import ipaddress
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ROUTES = {'GET': {'/mobile/v1/history','/mobile/v1/phone'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect','/mobile/v1/phone/start','/mobile/v1/phone/stop','/mobile/v1/attachment'}}
+ROUTES = {'GET': {'/mobile/v1/history','/mobile/v1/phone'}, 'POST': {'/mobile/v1/pair','/mobile/v1/send','/mobile/v1/cancel','/mobile/v1/disconnect','/mobile/v1/phone/start','/mobile/v1/phone/stop','/mobile/v1/attachment','/mobile/v1/profile'}}
 MAX_BODY = 16384
 ATTACH_BODY = 6*1024*1024
 
@@ -18,7 +18,7 @@ class Relay(BaseHTTPRequestHandler):
 
     def forward(self):
         peer = ipaddress.ip_address(self.client_address[0])
-        if not private(peer) or self.headers.get('Origin') is not None or not (self.path in ROUTES.get(self.command,set()) or (self.command=='GET' and re.fullmatch(r'/mobile/v1/attachment/[a-f0-9]{64}',self.path))):
+        if not (private(peer) or (getattr(self.server,'proxy_only',False) and peer.is_loopback)) or self.headers.get('Origin') is not None or not (self.path in ROUTES.get(self.command,set()) or (self.command=='GET' and re.fullmatch(r'/mobile/v1/attachment/[a-f0-9]{64}',self.path))):
             self.send_error(403)
             return
         try:
@@ -54,13 +54,15 @@ def private(ip):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--bind',required=True,help='PC private IPv4 address')
+    p.add_argument('--bind',required=True,help='PC private IPv4 address or 127.0.0.1 with --proxy-only')
+    p.add_argument('--proxy-only',action='store_true',help='Listen only on loopback behind owner-managed HTTPS proxy')
     p.add_argument('--target-port',required=True,type=int,help='Assistant loopback port')
     p.add_argument('--port',default=8765,type=int)
     args = p.parse_args()
-    if not private(ipaddress.ip_address(args.bind)) or not all(1<=x<=65535 for x in (args.port,args.target_port)):
+    if not ((args.proxy_only and args.bind=='127.0.0.1') or (not args.proxy_only and private(ipaddress.ip_address(args.bind)))) or not all(1<=x<=65535 for x in (args.port,args.target_port)):
         p.error('Private IPv4 and valid ports required')
     server = ThreadingHTTPServer((args.bind,args.port),Relay)
     server.target_port = args.target_port
+    server.proxy_only = args.proxy_only
     print(f'Mobile endpoint: http://{args.bind}:{args.port} (trusted Wi-Fi only)')
     server.serve_forever()
