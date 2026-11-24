@@ -2,9 +2,9 @@ import {cloud,type CloudAccount} from './cloud';
 export type BrowserTask={id:string;url:string;goal:string;remember?:boolean};
 export type BrowserDocument={id:string;name:string;kind:'original'|'page';mime:'application/pdf';size:number;sha256:string;source:string;expiresAt:number};
 export type BrowserProfile={site:string;expiresAt:number};
-export type BrowserStatus='queued'|'running'|'awaiting_human'|'awaiting_approval'|'approved'|'action_inflight'|'completed'|'failed'|'cancelled'|'needs_review';
-export type BrowserJob={id:string;site:string;goal:string;status:BrowserStatus;message:string;steps:number;updatedAt:number;approval?:{id:string;label:string;url:string;preview?:string};result?:{summary:string;evidence:string;url:string};pageUrl?:string;documents?:BrowserDocument[];remember?:boolean};
-const statuses=['queued','running','awaiting_human','awaiting_approval','approved','action_inflight','completed','failed','cancelled','needs_review'];
+export type BrowserStatus='queued'|'running'|'awaiting_human'|'awaiting_approval'|'awaiting_file'|'approved'|'action_inflight'|'completed'|'failed'|'cancelled'|'needs_review';
+export type BrowserJob={id:string;site:string;goal:string;status:BrowserStatus;message:string;steps:number;updatedAt:number;approval?:{id:string;label:string;url:string;preview?:string;accept?:string};result?:{summary:string;evidence:string;url:string};pageUrl?:string;documents?:BrowserDocument[];remember?:boolean};
+const statuses=['queued','running','awaiting_human','awaiting_approval','awaiting_file','approved','action_inflight','completed','failed','cancelled','needs_review'];
 export function browserUrl(raw:unknown){
  if(typeof raw!=='string'||raw.length>2048)return null;
  try{const u=new URL(raw);if(u.protocol!=='https:'||u.username||u.password||u.port||!u.hostname.includes('.')||/^\d[\d.]*$/.test(u.hostname)||u.hostname.includes(':')||/\.(?:local|internal|invalid|test|lan|onion|arpa)$/.test(u.hostname))return null;return u.href}catch{return null}
@@ -56,4 +56,10 @@ export async function fetchBrowserDocument(a:CloudAccount,task:BrowserTask,d:Bro
  const data=(r as BrowserDocument&{base64:string}).base64;
  if(data.length>Math.ceil(2*1024*1024/3)*4||!/^[A-Za-z0-9+/]+={0,2}$/.test(data))throw Error('지원하지 않는 PDF 데이터');
  return data;
+}
+
+export type BrowserUpload={name:string;mime:string;base64:string};
+export async function uploadBrowserFile(a:CloudAccount,task:BrowserTask,approvalId:string,file:BrowserUpload){
+ const r=await cloud(base+'upload',{id:task.id,approvalId,confirmed:true,file},a.token,60000);
+ const job=parseBrowserJob(r);if(job.id!==task.id)throw Error('웹 업무 ID 불일치');return job;
 }

@@ -111,3 +111,6 @@ Conversation now proposes a scoped browser job in chat. After the user confirms 
 
 ### Private browser login reuse and PDF files
 When starting a web task the user may opt in to encrypted site-specific cookie retention for up to 24 hours. The jobs panel lists saved profiles and offers revocation. An original same-origin PDF link and a print-to-PDF page copy are separately labeled; both require approval. The Android/iOS app downloads the actual bytes, checks SHA-256 and PDF signature, then opens native sharing (e.g. save to device or send via mail); no automatic email transmission. The temporary local cache is cleaned after sharing. Requires operator BROWSER_VAULT_SECRET and Cloud deployment; native-device validation still required. File uploads and POST/blob document download are not yet supported.
+
+### Browser file attachment
+When the browser agent finds a supported visible empty file input, the chat offers a PDF/JPG/PNG picker (up to 2 MiB). The user approves the exact file and target website; the server rechecks the target and assigns the file without putting bytes in model context or persisting the uploaded file. A subsequent page observation determines whether the site actually accepted it. Hidden/custom widgets may require manual handling. Native and live-site testing remain required.
