@@ -1,7 +1,7 @@
 import {cloud,type CloudAccount} from './cloud';
 export type BrowserTask={id:string;url:string;goal:string};
 export type BrowserStatus='queued'|'running'|'awaiting_human'|'awaiting_approval'|'approved'|'action_inflight'|'completed'|'failed'|'cancelled'|'needs_review';
-export type BrowserJob={id:string;site:string;goal:string;status:BrowserStatus;message:string;steps:number;updatedAt:number;approval?:{id:string;label:string;url:string};result?:{summary:string;evidence:string;url:string};pageUrl?:string};
+export type BrowserJob={id:string;site:string;goal:string;status:BrowserStatus;message:string;steps:number;updatedAt:number;approval?:{id:string;label:string;url:string;preview?:string};result?:{summary:string;evidence:string;url:string};pageUrl?:string};
 const statuses=['queued','running','awaiting_human','awaiting_approval','approved','action_inflight','completed','failed','cancelled','needs_review'];
 export function browserUrl(raw:unknown){
  if(typeof raw!=='string'||raw.length>2048)return null;
@@ -25,9 +25,9 @@ export function browserPatch(j:BrowserJob){
  return {text,status:(finished?undefined:failed?'failed':'pending') as 'pending'|'failed'|undefined,jobStatus:j.status,browserUpdatedAt:j.updatedAt,browserApproval:j.approval,browserResultUrl:finished?browserUrl(j.result!.url)||undefined:undefined};
 }
 const base='/v1/assistant/browser/';
-export async function listBrowserJobs(a:CloudAccount){
+export async function listBrowserJobs(a:CloudAccount):Promise<BrowserJob[]>{
  const r=await cloud(base+'jobs',undefined,a.token);if(!Array.isArray(r.jobs))throw Error('웹 업무 목록 오류');
- return r.jobs.map(parseBrowserJob);
+ return (r.jobs as unknown[]).map(parseBrowserJob);
 }
 export async function browserCommand(a:CloudAccount,task:BrowserTask,action:'start'|'view'|'resume'|'approve'|'cancel',approvalId?:string){
  const r=await cloud(base+action,action==='start'?{...task,confirmed:true}:{id:task.id,...(approvalId?{approvalId}:{})},a.token,60000);
