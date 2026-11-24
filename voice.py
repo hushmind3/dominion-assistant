@@ -74,14 +74,16 @@ async def run_live(conversation, config, stop, report=lambda state: None):
             while not stop.is_set():
                 if self.gate.latest is None:
                     return
-                if conversation.request():
+                if not config.get('directChat') and conversation.request():
                     await asyncio.sleep(.15)
                     continue
                 item=self.gate.take()
                 if item is None: continue
                 epoch,text=item
                 try:
-                    if config.get("phoneId"):
+                    if config.get('directChat'):
+                        rid=conversation.direct_voice_submit(text)
+                    elif config.get("phoneId"):
                         rid=conversation.submit(text,"phone",kind="chat",phone_id=config["phoneId"],objective=config["objective"])
                     elif mode in ("outbound","inbound"):
                         rid=conversation.submit(text,"phone",kind="chat")
@@ -96,6 +98,15 @@ async def run_live(conversation, config, stop, report=lambda state: None):
         async def wait_answer(self,rid,epoch):
             deadline=time.monotonic()+180
             while time.monotonic()<deadline and not stop.is_set():
+                if config.get('directChat'):
+                    turn=conversation.mobile_result(rid)
+                    if not turn:return
+                    if turn['status'] in ('completed','failed','interrupted','cancelled'):
+                        text=turn.get('answer') or turn.get('error') or ''
+                        if text and self.gate.current(epoch):await self.push_frame(TTSSpeakFrame(text[:8000]))
+                        return
+                    await asyncio.sleep(.15)
+                    continue
                 result=conversation.answer(rid)
                 if result is not None:
                     if result and self.gate.current(epoch):

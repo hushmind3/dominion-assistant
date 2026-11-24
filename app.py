@@ -10,6 +10,7 @@ import time
 from mobile_gateway import MobileAccess
 from attachments import AttachmentStore, Vision, IMAGE_MIME
 from assistant_memory import DEFAULT_PROFILE, validate_profile, context as memory_context
+from direct_chat import DirectChat
 import uuid
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +25,7 @@ UI_TOKEN = secrets.token_hex(32)
 
 
 class Conversation:
-    def __init__(self, state_path=None):
+    def __init__(self, state_path=None, chat_client=None):
         self.lock = threading.RLock()
         self.pending = None
         self.answers = OrderedDict()
@@ -32,6 +33,8 @@ class Conversation:
         self.last = None
         self.mobile_turns = []
         self.profile = dict(DEFAULT_PROFILE)
+        self.chat_client=chat_client or DirectChat()
+        self.direct_lock=threading.Lock()
         self.attachments = AttachmentStore(Path(state_path).parent/'attachments' if state_path else None)
         self.phone_calls = []
         self.inbox = PluginInbox(state_path)
@@ -44,6 +47,9 @@ class Conversation:
             self.mobile_turns = saved.get('mobileTurns', [])
             self.profile = validate_profile(saved.get('profile',DEFAULT_PROFILE))
             self.phone_calls = saved.get('phoneCalls', [])
+            for turn in self.mobile_turns:
+                if turn.get('lane')=='direct' and turn.get('status')=='running':
+                    turn.update(status='interrupted',error='서비스 재시작으로 대화 연결이 중단되었습니다. 다시 요청하세요.')
             for call in self.phone_calls:
                 if call['status'] in ('starting','dialing','connected','stopping','waiting','running'):
                     call['status'] = 'needs_review'
@@ -199,7 +205,7 @@ class Conversation:
         with self.lock:
             return json.loads(json.dumps(self.phone_calls,ensure_ascii=False))
 
-    def mobile_submit(self, data):
+    def mobile_submit(self, data, source='mobile', force_direct=False):
         client_id, text, kind = (data.get(k) for k in ('clientId', 'text', 'kind'))
         if not isinstance(client_id, str) or not re.fullmatch(r'[A-Za-z0-9-]{1,80}', client_id):
             raise ValueError('Invalid client request ID')
@@ -222,10 +228,60 @@ class Conversation:
                 if i is None: raise ValueError('대화 저장 한도')
                 self.mobile_turns.pop(i)
             turn = {'clientId':client_id,'requestId':str(uuid.uuid4()),'text':text,'kind':kind,'status':'queued','createdAt':int(time.time()*1000)}
+            direct=(kind=='chat' and self.chat_client.enabled())
+            if force_direct and not direct:raise ValueError('대화 전용 모델 연결이 꺼져 있습니다.')
+            turn['lane']='direct' if direct else 'host'
+            if source=='voice':turn['source']='voice'
             if attachment: turn['attachment']=attachment
             self.mobile_turns.append(turn)
             self.persist()
             return dict(turn)
+
+    def direct_voice_submit(self,text):
+        return self.mobile_submit({'clientId':'voice-'+str(uuid.uuid4()),'text':text,'kind':'chat'},source='voice',force_direct=True)['requestId']
+
+    def mobile_result(self,rid):
+        with self.lock:
+            return next((dict(t) for t in self.mobile_turns if t['requestId']==rid),None)
+
+    def run_direct_once(self):
+        # A single owner-chat lane, independent of the host's durable pending request.
+        if not self.direct_lock.acquire(blocking=False):return False
+        try:
+            with self.lock:
+                turn=next((t for t in self.mobile_turns if t.get('lane')=='direct' and t['status']=='queued'),None)
+                if not turn:return False
+                if not self.chat_client.enabled():return False
+                rid=turn['requestId']
+                turn['status']='running'
+                self.persist()
+                text=turn['text']
+                ctx=memory_context(text,self.mobile_turns,self.profile,budget=6500)
+                aid=(turn.get('attachment') or {}).get('id')
+            try:
+                evidence=None
+                if aid:
+                    a=self.attachments.get(aid)
+                    evidence={k:a[k] for k in ('name','method','excerpt')}
+                answer=self.chat_client.complete(ctx,text,evidence)
+                if not isinstance(answer,str) or not answer.strip():raise ValueError('Empty answer')
+                result={'status':'completed','answer':answer[:12000],'error':None}
+            except Exception:
+                result={'status':'failed','error':'대화 전용 모델 응답 실패. PC의 모델 설정을 확인하세요.'}
+            with self.lock:
+                self.update_mobile(rid,result.pop('status'),**result)
+                self.persist()
+            return True
+        finally:
+            self.direct_lock.release()
+
+    def direct_worker(self):
+        while True:
+            try:
+                worked=self.run_direct_once()
+            except Exception:
+                worked=False
+            if not worked:time.sleep(.35)
 
     def update_mobile(self, rid, status, **fields):
         for turn in self.mobile_turns:
@@ -235,7 +291,7 @@ class Conversation:
 
     def mobile_history(self):
         with self.lock:
-            return {'turns':[dict(t) for t in self.mobile_turns], 'profile':self.profile.copy()}
+            return {'turns':[dict(t) for t in self.mobile_turns], 'profile':self.profile.copy(),'directChat':self.chat_client.enabled()}
 
     def set_profile(self,data):
         profile=validate_profile(data)
@@ -246,7 +302,7 @@ class Conversation:
 
     def mobile_waiting(self):
         with self.lock:
-            return any(t['status'] == 'queued' for t in self.mobile_turns)
+            return any(t['status'] == 'queued' and t.get('lane')!='direct' for t in self.mobile_turns)
 
     def mobile_cancel(self, rid):
         with self.lock:
@@ -259,7 +315,7 @@ class Conversation:
     def v2_request(self):
         with self.lock:
             if not self.pending:
-                turn = next((t for t in self.mobile_turns if t['status'] == 'queued'), None)
+                turn = next((t for t in self.mobile_turns if t['status'] == 'queued' and t.get('lane')!='direct'), None)
                 if turn:
                     self.submit(turn['text'], 'mobile', turn['requestId'], turn['kind'], attachment_id=(turn.get('attachment') or {}).get('id'))
             request = self.request()
@@ -316,11 +372,14 @@ def live_start(config, managed=False):
     with live_lock:
         if live["state"] not in ("stopped", "failed"):
             raise ValueError("먼저 기존 음성 세션을 중지하세요.")
-        if conversation.request() or conversation.mobile_waiting():
-            raise ValueError("대기 중인 대화 요청을 먼저 처리하세요.")
-        conversation.reset()
+        direct_chat=config.get('mode','manual') in ('manual','mobile') and conversation.chat_client.enabled()
+        if not direct_chat:
+            if conversation.request() or conversation.mobile_waiting():
+                raise ValueError("대기 중인 대화 요청을 먼저 처리하세요.")
+            conversation.reset()
+        config['directChat']=direct_chat
         live.clear()
-        live.update(state="starting", mode=config.get("mode", "manual"), room=config["room"], phoneId=phone_id, mobileVoiceId=voice_id)
+        live.update(state="starting", mode=config.get("mode", "manual"), room=config["room"], phoneId=phone_id, mobileVoiceId=voice_id, directChat=direct_chat)
         live_stop.clear()
     def report(status):
         with live_lock:
@@ -569,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply(200,conversation.set_profile(data))
                 elif self.path == '/mobile/v1/send':
                     with live_lock:
-                        if live['state'] not in ('stopped','failed'):
+                        if live['state'] not in ('stopped','failed') and not live.get('directChat'):
                             raise ValueError('실시간 통화를 먼저 종료하세요.')
                         self.reply(201, conversation.mobile_submit(data))
                 elif self.path == '/mobile/v1/cancel':
@@ -602,7 +661,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {"error": "Local session required"})
                 return
             data = self.body()
-            if self.path == '/mobile-admin/voice-config':
+            if self.path == '/mobile-admin/chat-config':
+                conversation.chat_client.configure(data)
+                self.reply(200,{'ok':True})
+            elif self.path == '/mobile-admin/chat-disable':
+                conversation.chat_client.clear()
+                self.reply(200,{'ok':True})
+            elif self.path == '/mobile-admin/voice-config':
                 configure_mobile_voice(data)
                 self.reply(200,{'ok':True})
             elif self.path == '/mobile-admin/voice-disable':
@@ -668,4 +733,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DOMINION bridge credential required")
+    threading.Thread(target=conversation.direct_worker,daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()

@@ -94,3 +94,6 @@ $('visionDisable').onclick=async()=>{try{await api('/mobile-admin/vision-disable
 
 $('mobileVoiceEnable').onclick=async()=>{try{const config=Object.fromEntries(['url','sttKey','ttsKey','voice','language'].map(id=>[id,$(id).value.trim()]));Object.assign(config,{apiKey:$('lkKey').value.trim(),apiSecret:$('lkSecret').value.trim()});await api('/mobile-admin/voice-config',config);['lkKey','lkSecret','sttKey','ttsKey'].forEach(id=>$(id).value='');$('mobileVoiceStatus').textContent='앱에서 음성 통화를 시작할 수 있습니다.'}catch(e){$('mobileVoiceStatus').textContent=e.message}};
 $('mobileVoiceDisable').onclick=async()=>{try{await api('/mobile-admin/voice-disable',{});$('mobileVoiceStatus').textContent='전용 음성 설정을 해제했습니다. 별도 전화 설정이 있으면 그 설정을 사용할 수 있습니다.'}catch(e){$('mobileVoiceStatus').textContent=e.message}};
+
+$('chatEnable').onclick=async()=>{try{await api('/mobile-admin/chat-config',{url:$('chatUrl').value.trim(),model:$('chatModel').value.trim(),key:$('chatKey').value});$('chatKey').value='';$('chatModelStatus').textContent='대화 전용 경로 설정 완료. 실제 응답을 확인하세요.'}catch(e){$('chatModelStatus').textContent=e.message}};
+$('chatDisable').onclick=async()=>{try{await api('/mobile-admin/chat-disable',{});$('chatModelStatus').textContent='새 대화는 도미니온으로 전달됩니다. 이미 대기 중인 대화는 연결을 다시 켜거나 휴대폰에서 취소하세요.'}catch(e){$('chatModelStatus').textContent=e.message}};
