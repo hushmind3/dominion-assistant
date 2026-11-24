@@ -76,6 +76,8 @@ class CloudLink:
         self.wake=threading.Event()
         self.change=threading.Event()
         self.send_lock=threading.Lock()
+        self.notices=threading.Event()
+        self.outbox={}
         self.internal=secrets.token_urlsafe(32)
         if self.path and self.path.exists():
             saved=json.loads(self.path.read_text(encoding='utf-8'))
@@ -125,7 +127,7 @@ class CloudLink:
             token=flight.setdefault('deviceToken',secrets.token_urlsafe(32))
             result=cloud('register',{'name':name.strip(),'deviceToken':token},'Bearer '+flight['token'])
             if result.get('account_id')!=account:raise ValueError('Account mismatch')
-            self.owner=account;self.config={'id':result['id'],'name':name.strip(),'token':token};self.save();self.flight=None;self.error=None;self.wake.set()
+            self.owner=account;self.config={'id':result['id'],'name':name.strip(),'token':token};self.save();self.flight=None;self.error=None;self.wake.set();self.notices.set()
             return self.status()
     def status(self):
         with self.lock:
@@ -136,7 +138,7 @@ class CloudLink:
                 try:cloud('device/revoke',{},'Device '+self.config['token'])
                 except CloudError as e:
                     if e.status!=401:raise
-                self.config=None;self.save()
+                self.config=None;self.outbox.clear();self.save();self.notices.set()
             self.online=False;self.flight=None;self.error=None
             sock=self.socket;self.socket=None;self.wake.set()
         if sock:
@@ -164,6 +166,37 @@ class CloudLink:
             cap,obj=compact(route,obj)
             if cap!=200:return cap,obj
         return status,obj
+    def publish_task(self,rid,text):
+        # Only committed task outcomes, not arbitrary model-generated phone actions.
+        with self.lock:
+            if not self.config:return
+            key='task:'+rid
+            if len(self.outbox)>=100:return
+            self.outbox.setdefault(key,{'id':key,'text':text[:1800]})
+            self.notices.set()
+    def notice_worker(self):
+        delay=1
+        while True:
+            self.notices.wait();self.notices.clear()
+            while True:
+                with self.lock:
+                    c=self.config
+                    item=next(iter(self.outbox.values()),None)
+                if not c or not item:break
+                try:
+                    cloud('device/message',item,'Device '+c['token'])
+                    with self.lock:
+                        if self.config is c:self.outbox.pop(item['id'],None)
+                    delay=1
+                except CloudError as e:
+                    if e.status==401:break
+                    if e.status in (400,403,413):
+                        with self.lock:
+                            if self.config is c:self.outbox.pop(item['id'],None)
+                        continue
+                    self.notices.wait(min(120,delay));self.notices.clear();delay=min(120,delay*2)
+                except Exception:
+                    self.notices.wait(min(120,delay));self.notices.clear();delay=min(120,delay*2)
     def changed(self):
         # Called on committed local state changes. Never perform network I/O
         # while the conversation lock is held.
@@ -191,6 +224,7 @@ class CloudLink:
         from websockets.sync.client import connect
         from websockets.exceptions import InvalidStatus
         threading.Thread(target=self.notify_worker,daemon=True).start()
+        threading.Thread(target=self.notice_worker,daemon=True).start()
         executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix='cloud-action')
         delay=1
         while True:
@@ -214,7 +248,7 @@ class CloudLink:
                     if obj.get('type')=='ready':
                         with self.lock:
                             if self.config is c:
-                                self.online=True;self.error=None;delay=1
+                                self.online=True;self.error=None;delay=1;self.notices.set()
                     elif obj.get('type')=='request':
                         executor.submit(self.handle,sock,c,obj)
             except InvalidStatus as e:

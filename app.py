@@ -349,7 +349,18 @@ class Conversation:
 conversation = Conversation(os.environ.get('DOMINION_PLUGIN_STATE') if __name__ == '__main__' else None)
 mobile_access = MobileAccess(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'mobile-access.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
 cloud_link = CloudLink(Path(os.environ['DOMINION_PLUGIN_STATE']).parent/'cloud-link.json' if __name__=='__main__' and os.environ.get('DOMINION_PLUGIN_STATE') else None)
-conversation.on_change=cloud_link.changed
+_notice_seen={t['requestId'] for t in conversation.mobile_turns if t.get('kind')=='task' and t.get('status') in ('completed','failed','cancelled','exhausted','interrupted','in_doubt','needs_review')}
+def notify_conversation_change():
+    cloud_link.changed()
+    for t in conversation.mobile_turns:
+        rid=t.get('requestId');status=t.get('status')
+        if not rid or rid in _notice_seen or t.get('kind')!='task' or status not in ('completed','failed','cancelled','exhausted','interrupted','in_doubt','needs_review'):continue
+        _notice_seen.add(rid)
+        text=('맡긴 일이 완료되었습니다.\n' if status=='completed' else '작업 상태를 확인해 주세요.\n')+(t.get('answer') or t.get('error') or t.get('text') or '')
+        cloud_link.publish_task(rid,text)
+    if len(_notice_seen)>600:
+        _notice_seen.intersection_update(t.get('requestId') for t in conversation.mobile_turns)
+conversation.on_change=notify_conversation_change
 phone_lock = threading.RLock()
 phone_config = None
 mobile_voice_config = None

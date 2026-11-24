@@ -65,7 +65,7 @@ class RelaySocket{
    let x:any;try{x=JSON.parse(e.data)}catch{return}
    if(x.type==='ready'){this.ready=true;this.delay=1000;this.emit({type:'ready'})}
    else if(x.type==='devices'&&Array.isArray(x.devices)){this.snapshot=x.devices;this.emit(x)}
-   else if(x.type==='changed')this.emit(x)
+   else if(x.type==='changed'||x.type==='message')this.emit(x)
    else if(x.type==='result'){
     const p=this.pending.get(x.id);if(!p)return;this.pending.delete(x.id);clearTimeout(p.timer);
     if(x.status>=200&&x.status<300)p.resolve(x.data);else p.reject(new CloudApiError(x.status,x.data?.error||'PC request failed'));this.maybeClose()
