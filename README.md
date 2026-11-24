@@ -67,3 +67,5 @@ Authentication now uses the current DOMINION main `/v1/apps/start`, `/connect`, 
 
 ## Messenger-first mobile app
 The default entry is Messenger. Shared Cloud login opens chat without a PC. Free model catalog and completions use the existing Cloud API, with device-local, account-partitioned message history. Optional PC tasks, attachments and SIP calls are selected explicitly; ordinary chats never require the PC. The previous connection UI remains under advanced settings. Call button opens the LiveKit voice session. PC-independent realtime audio, native background incoming calls, server push, local STT/TTS and BYOK are separate follow-up work; no deployment or APK build.
+
+The in-app VoIP call screen now auto-connects after user confirmation, requests microphone permission, enables the mic, displays peer-connected elapsed time, mute/audio routing and hangup. The messenger remains mounted during calls. Backgrounding still ends a call intentionally until native call lifecycle integration is validated. No native incoming ring or PSTN-free claim for external phone numbers.

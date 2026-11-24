@@ -4,7 +4,7 @@ import {randomUUID} from 'expo-crypto';
 import {ExpoSpeechRecognitionModule,useSpeechRecognitionEvent} from 'expo-speech-recognition';
 import * as Speech from 'expo-speech';
 import {cloud,loadAccount,saveAccount,loginStart,loginStatus,openLogin,logout,clearAccount,devices,subscribeRelay,relay,CloudApiError,type CloudAccount,type Device,type Flight} from './cloud';
-import {loadJournal,saveJournal,deleteJournal,type Journal,type Message} from './messengerStore';
+import {loadJournal,saveJournal,type Journal,type Message} from './messengerStore';
 import {choosePhoto,chooseDocument,type DraftAttachment} from './attachments';
 import {notificationPermission,taskNotice} from './deviceActions';
 import PhonePanel from './PhonePanel';
@@ -50,8 +50,9 @@ export default function Messenger({onCall,onLegacy}:Props){
    if(changed)commit({...state.current,messages:merged.sort((a,b)=>a.time-b.time).slice(-200)});
   }while(pcDirty.current&&g===epoch.current)}catch(e){if(g===epoch.current&&!(e instanceof CloudApiError&&e.status===503))setError((e as Error).message)}finally{pcChecking.current=false}
  };
- useEffect(()=>{if(!account)return;let stop=false,off:undefined|(()=>void);const g=epoch.current;
+ useEffect(()=>{if(!account)return;let stop=false,remoteEnabled=false,off:undefined|(()=>void);const g=epoch.current;
   void(async()=>{try{const conf=await cloud('/v1/public-config');if(stop||g!==epoch.current||!conf.assistant_link)return;
+   remoteEnabled=true;
    const initial=await devices(account);if(stop||g!==epoch.current)return;setRows(initial);
    off=subscribeRelay(account.token,e=>{if(stop||g!==epoch.current)return;
     if(e.type==='devices'&&e.devices){setRows(e.devices);const selected=e.devices.find(d=>d.id===state.current.deviceId&&d.online);if(selected)void refreshPC(account,selected)}
@@ -59,7 +60,7 @@ export default function Messenger({onCall,onLegacy}:Props){
     if(e.type==='offline')setRows(v=>v.map(d=>({...d,online:false})));
    });
   }catch{/* Cloud chat does not depend on remote transport. */}})();
-  const sub=AppState.addEventListener('change',s=>{if(s==='active'&&!stop)void devices(account).then(ds=>{if(!stop){setRows(ds);const d=ds.find(x=>x.id===state.current.deviceId&&x.online);if(d)void refreshPC(account,d)}}).catch(()=>{})});
+  const sub=AppState.addEventListener('change',s=>{if(s==='active'&&!stop&&remoteEnabled)void devices(account).then(ds=>{if(!stop){setRows(ds);const d=ds.find(x=>x.id===state.current.deviceId&&x.online);if(d)void refreshPC(account,d)}}).catch(()=>{})});
   return()=>{stop=true;off?.();sub.remove()}
  },[account]);
  const selected=rows.find(d=>d.id===journal.deviceId),online=selected?.online===true;
@@ -101,7 +102,7 @@ export default function Messenger({onCall,onLegacy}:Props){
   {!!error&&<Pressable onPress={()=>setError('')} style={{paddingHorizontal:16,paddingVertical:8}}><Text accessibilityRole="alert" style={{color:dark?'#FFB4A8':'#A43B30',fontSize:13}}>{error} ×</Text></Pressable>}
   <View style={[s.composer,{backgroundColor:c.card,borderColor:c.line}]}>{(pcTask||attachment)&&<View style={s.row}><Text style={{flex:1,color:c.accent}}>{attachment?attachment.name:'PC 업무 요청'}</Text>{icon('선택 취소','×',()=>{setAttachment(null);setPcTask(false)})}</View>}<View style={s.row}>{icon('첨부 및 업무','＋',actions)}<TextInput multiline maxLength={6000} value={draft} onChangeText={setDraft} placeholder={listening?'듣고 있습니다…':'메시지를 입력하세요'} placeholderTextColor={c.muted} style={[s.input,{backgroundColor:c.bg,color:c.ink}]}/>{icon(listening?'음성 인식 중지':'음성 입력',listening?'■':'🎙',()=>void mic())}{(draft.trim()||attachment)&&icon('전송','↑',()=>void send(),true)}</View>{busy&&<Text style={{color:c.muted,fontSize:12}}>비서가 처리하고 있습니다…</Text>}</View>
   <Modal visible={panel!==null} animationType="slide" onRequestClose={()=>setPanel(null)}><SafeAreaView style={[s.page,{backgroundColor:c.bg}]}><View style={[s.header,{backgroundColor:c.card,borderColor:c.line}]}>{icon('닫기','‹',()=>setPanel(null))}<Text style={[s.title,{color:c.ink}]}>{panel==='settings'?'비서 설정':panel==='phone'?'전화':'일정'}</Text></View>
-   {panel==='planner'?<PlannerPanel/>:panel==='phone'?(online&&selected?<PhonePanel request={(path,body)=>relay(account.token,selected.id,path,body)} onVoice={call} eventDriven revision={phoneRev}/>:<View style={s.empty}><Text style={{color:c.muted}}>다른 사람에게 전화하려면 SIP가 설정된 PC를 선택하세요.</Text>{button('PC 선택',()=>setPanel('settings'))}</View>):<ScrollView contentContainerStyle={{padding:18,gap:12}}><Text style={[s.title,{color:c.ink}]}>AI 모델</Text>{(models.length?models:[{id:'dominion/free-auto',name:'DOMINION Free Auto',free:true}]).map(m=><View key={m.id}>{button((journal.model===m.id?'✓ ':'')+m.name,()=>commit({...state.current,model:m.id}),journal.model===m.id)}</View>)}<Text style={[s.title,{color:c.ink}]}>내 PC · 선택 사항</Text>{!rows.length&&<Text style={{color:c.muted}}>등록된 PC가 없거나 원격 연결 서버가 준비되지 않았습니다. Cloud 대화에는 영향이 없습니다.</Text>}{rows.map(d=><View key={d.id}>{button((journal.deviceId===d.id?'✓ ':'')+d.name+(d.online?' · 온라인':' · 오프라인'),()=>choosePC(d),journal.deviceId===d.id)}</View>)}{button('PC 연결 선택 해제',()=>commit({...state.current,deviceId:undefined}))}{button(alerts?'앱 사용 중 작업 알림 켜짐':'작업 알림 켜기',()=>{if(alerts)setAlerts(false);else void notificationPermission().then(()=>setAlerts(true)).catch(e=>setError(e.message))})}{button('일정 및 알림',()=>setPanel('planner'))}{button('기존 PC 고급 설정',onLegacy)}{button('이 기기의 대화 삭제',()=>Alert.alert('기록 삭제','이 기기의 대화 기록을 지울까요?',[{text:'취소',style:'cancel'},{text:'삭제',onPress:()=>{commit({...state.current,messages:[]});void writeQueue.current.then(()=>deleteJournal(account.accountId)).catch(()=>{})}}]))}{button('로그아웃',()=>void signout())}<Text style={{color:c.muted,fontSize:12}}>대화 기록은 이 기기에 저장됩니다. Cloud 모델 사용량은 DOMINION 회원 한도를 공유합니다. PC 업무와 통화는 별도 연결이 필요합니다.</Text></ScrollView>}
+   {panel==='planner'?<PlannerPanel/>:panel==='phone'?(online&&selected?<PhonePanel request={(path,body)=>relay(account.token,selected.id,path,body)} onVoice={call} eventDriven revision={phoneRev}/>:<View style={s.empty}><Text style={{color:c.muted}}>다른 사람에게 전화하려면 SIP가 설정된 PC를 선택하세요.</Text>{button('PC 선택',()=>setPanel('settings'))}</View>):<ScrollView contentContainerStyle={{padding:18,gap:12}}><Text style={[s.title,{color:c.ink}]}>AI 모델</Text>{(models.length?models:[{id:'dominion/free-auto',name:'DOMINION Free Auto',free:true}]).map(m=><View key={m.id}>{button((journal.model===m.id?'✓ ':'')+m.name,()=>commit({...state.current,model:m.id}),journal.model===m.id)}</View>)}<Text style={[s.title,{color:c.ink}]}>내 PC · 선택 사항</Text>{!rows.length&&<Text style={{color:c.muted}}>등록된 PC가 없거나 원격 연결 서버가 준비되지 않았습니다. Cloud 대화에는 영향이 없습니다.</Text>}{rows.map(d=><View key={d.id}>{button((journal.deviceId===d.id?'✓ ':'')+d.name+(d.online?' · 온라인':' · 오프라인'),()=>choosePC(d),journal.deviceId===d.id)}</View>)}{button('PC 연결 선택 해제',()=>commit({...state.current,deviceId:undefined}))}{button(alerts?'앱 사용 중 작업 알림 켜짐':'작업 알림 켜기',()=>{if(alerts)setAlerts(false);else void notificationPermission().then(()=>setAlerts(true)).catch(e=>setError(e.message))})}{button('일정 및 알림',()=>setPanel('planner'))}{button('기존 PC 고급 설정',onLegacy)}{button('이 기기의 대화 삭제',()=>Alert.alert('기록 삭제','이 기기의 대화 기록을 지울까요?',[{text:'취소',style:'cancel'},{text:'삭제',onPress:()=>{commit({...state.current,messages:[]})}}]))}{button('로그아웃',()=>void signout())}<Text style={{color:c.muted,fontSize:12}}>대화 기록은 이 기기에 저장됩니다. Cloud 모델 사용량은 DOMINION 회원 한도를 공유합니다. PC 업무와 통화는 별도 연결이 필요합니다.</Text></ScrollView>}
   </SafeAreaView></Modal>
  </KeyboardAvoidingView></SafeAreaView>
 }
