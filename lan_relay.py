@@ -32,8 +32,8 @@ class Relay(BaseHTTPRequestHandler):
             try:
                 conn.request(self.command, self.path, body, headers)
                 response = conn.getresponse()
-                data = response.read(4*1024*1024+1)
-                if len(data)>4*1024*1024: raise ValueError('Response too large')
+                data = response.read(32*1024*1024+1)
+                if len(data)>32*1024*1024: raise ValueError('Response too large')
                 self.send_response(response.status)
                 self.send_header('Content-Type',response.getheader('Content-Type','application/json'))
                 self.send_header('Cache-Control','no-store')

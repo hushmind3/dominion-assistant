@@ -35,3 +35,5 @@ Photo/file transfer, remote TLS transport, persistent device credentials across 
 
 ### Mobile delegated calls
 In the local web UI fill the existing LiveKit/Deepgram/Cartesia settings and SIP outbound trunk, then enable mobile phone calling. The provider credentials stay in server memory, not on the phone. On the phone open the call panel, enter the E.164 number and purpose, and explicitly confirm the real call. The voice bridge uses the existing SIP transport, discloses that it is AI, submits caller utterances as tool-free chat, and records bounded transcripts and call status locally. Lost responses use the same call ID; uncertain call attempts are not automatically retried after service restart. The PC operator must verify uncertain calls in LiveKit before clearing the review state. Real provider audio, call quality, and billing need device testing. Calls currently require the single shared host lane to be idle.
+
+Closing an audio connection does not discard a host job already in progress: its terminal event is still accepted. Call transcripts retain the latest 20 generated exchanges per call; text generation is not proof that audio reached the other party.

@@ -120,8 +120,8 @@ class Conversation:
             if self.pending.get('phoneId'):
                 call = self.find_phone(self.pending['phoneId'])
                 if call is not None:
-                    call['transcript'].append({'speaker':self.pending['text'][:1500],'answer':answer[:4000]})
-                    call['transcript'] = call['transcript'][-40:]
+                    call['transcript'].append({'speaker':self.pending['text'][:1000],'answer':answer[:2000]})
+                    call['transcript'] = call['transcript'][-20:]
             self.pending = None
             if persist: self.persist()
             return {"requestId": rid, "answerDigest": digest}
@@ -300,7 +300,7 @@ def live_start(config, managed=False):
             failed = True
         finally:
             with live_lock:
-                conversation.reset()
+                # Closing audio must not orphan a host job that has been accepted.
                 live["state"] = "failed" if failed else "stopped"
                 if phone_id:
                     conversation.phone_update(phone_id,'needs_review' if failed else 'ended',
@@ -445,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(401, {"error": "Bridge authentication required"})
                 return
             with conversation.lock:
-                request = conversation.request() if not (conversation.pending and conversation.pending.get('source') == 'mobile') else None
+                request = conversation.request() if not (conversation.pending and (conversation.pending.get('source') == 'mobile' or conversation.pending.get('phoneId'))) else None
             self.reply(200 if request else 204, request)
         elif self.path == "/":
             page = (ROOT / "index.html").read_text().replace("__VOICE_SESSION__", UI_TOKEN)
