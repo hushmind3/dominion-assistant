@@ -8,3 +8,6 @@ export const AVATARS=[
 ] as const;
 export function avatarFor(id?:string){return AVATARS.find(x=>x.id===id)||AVATARS[0]}
 export function assistantName(name?:string){return name?.trim().slice(0,40)||'나의 AI 비서'}
+
+export function validAvatarPhoto(value:unknown):value is string{return typeof value==='string'&&value.length<=262144&&/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)}
+export function modelProfile(p:{name:string;style:string;language:string;notes:string[]}){return {name:p.name,style:p.style,language:p.language,notes:p.notes}}

@@ -31,6 +31,8 @@ test('sheet snap is independent of mic state',()=>{
  assert.equal(canListen(false,false,true,'paused'),false);
 });
 
-import {assistantName,avatarFor,AVATARS} from '../assistantIdentity.ts';
+import {assistantName,avatarFor,AVATARS,validAvatarPhoto,modelProfile} from '../assistantIdentity.ts';
 test('drawer preserves a visible return area and accepts reverse swipe',()=>{for(const w of [320,360,400,768]){assert.ok(drawerWidth(w)<=w*.68);assert.ok(w-drawerWidth(w)>=w*.32-1)}assert.equal(drawerGesture(true,false,1,350,-60,5),true)});
 test('personal identity supports old profiles and rejects blank names',()=>{assert.equal(assistantName('  루나  '),'루나');assert.equal(assistantName(' '),'나의 AI 비서');assert.equal(avatarFor('unknown').id,'star');assert.equal(new Set(AVATARS.map(a=>a.id)).size,6)});
+
+test('profile photo stays local and bounded',()=>{const photo='data:image/jpeg;base64,/9j/AA==';assert.equal(validAvatarPhoto(photo),true);assert.equal(validAvatarPhoto('https://example.com/a.jpg'),false);assert.equal(validAvatarPhoto('data:image/jpeg;base64,'+'A'.repeat(262145)),false);assert.deepEqual(modelProfile({name:'루나',style:'친절',language:'ko',notes:[],photo,avatar:'moon'}),{name:'루나',style:'친절',language:'ko',notes:[]})});
