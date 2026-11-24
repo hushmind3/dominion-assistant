@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+node_modules/
+mobile/android/
+mobile/ios/
+mobile/dist/
+.expo/
+*.apk
+*.jks
+*.keystore
