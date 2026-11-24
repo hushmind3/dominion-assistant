@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "name": "DOMINION Assistant",
   "description": "Independent personal AI assistant with universal DOMINION SDK v2 task and voice support. Requires a compatible host.",
-  "version": "0.3.1-2bdc2bba50ec",
-  "image": "ghcr.io/hushmind3/dominion-assistant@sha256:a06ac5e5494a3d4f2c075d110e9d333732c709d76f664abcb996d69f7cebd721",
+  "version": "0.3.1-e7271d26b6f6",
+  "image": "ghcr.io/hushmind3/dominion-assistant@sha256:2969d109a3c5bce0a44e757302217fc9dcce0bd093daa00902b6ca84b4b2f7c3",
   "network": true,
   "port": 8080
 }
