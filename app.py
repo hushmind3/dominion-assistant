@@ -72,7 +72,7 @@ class Conversation:
                 return None
             return {k: self.pending[k] for k in ("requestId", "instruction")}
 
-    def accept(self, data):
+    def accept(self, data, persist=True):
         rid, answer, digest = (data.get(k) for k in ("requestId", "answer", "answerDigest"))
         if not isinstance(rid, str) or not isinstance(answer, str) or not isinstance(digest, str):
             raise ValueError("Invalid answer")
@@ -84,7 +84,7 @@ class Conversation:
             if previous:
                 if not hmac.compare_digest(previous["answerDigest"], digest):
                     raise ValueError("Conflicting duplicate answer")
-                self.persist()
+                if persist: self.persist()
                 return {"requestId": rid, "answerDigest": digest}
             if not self.pending or self.pending["requestId"] != rid:
                 raise ValueError("No matching pending request")
@@ -96,7 +96,7 @@ class Conversation:
                 self.answers.popitem(last=False)
             self.last = result
             self.pending = None
-            self.persist()
+            if persist: self.persist()
             return {"requestId": rid, "answerDigest": digest}
 
     def answer(self, rid):
@@ -134,7 +134,7 @@ class Conversation:
                 rid = data['requestId']
                 if data['status'] == 'completed':
                     answer = data.get('answer') or ''
-                    self.accept({'requestId':rid,'answer':answer,'answerDigest':hashlib.sha256(answer.encode()).hexdigest()})
+                    self.accept({'requestId':rid,'answer':answer,'answerDigest':hashlib.sha256(answer.encode()).hexdigest()}, persist=False)
                 else:
                     message = data.get('error') or '작업이 중단되었습니다. 도미니온에서 결과를 확인하세요.'
                     self.last = {'requestId':rid,'answer':message,'source':self.pending['source'],'status':data['status']}

@@ -71,7 +71,10 @@ async def run_live(conversation, config, stop, report=lambda state: None):
                     if result:
                         await self.push_frame(TTSSpeakFrame(result[:8000]))
                     return
-                if not conversation.status()["pending"]:
+                state = conversation.status()
+                if not state["pending"]:
+                    if (state.get("last") or {}).get("requestId") == rid and state["last"].get("status") not in (None,"completed"):
+                        await self.push_frame(TTSSpeakFrame(state["last"]["answer"][:1000]))
                     return
                 await asyncio.sleep(0.35)
             if not stop.is_set():

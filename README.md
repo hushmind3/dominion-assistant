@@ -18,3 +18,6 @@ Run `python3 -m unittest discover -s . -p 'test_*.py'`. In mobile/, run `npm ins
 
 ## Common plugin SDK v2
 The assistant now implements the language-neutral host-pull capability, request and event endpoints, with persistent event acknowledgements in /data. It sends ordinary utterances as task requests; the host chooses the permitted tools, model and approvals. The web interface displays actual host progress. This is not a new mobile pairing implementation; the old LAN client still requires its prior host adapter. Container updates and installation use the independent package marketplace.
+
+## Published plugin package
+The `Publish OCI plugin` workflow tests the real service, pushes a commit-tagged GHCR image, verifies that the exact digest can be pulled without credentials, and only then writes a digest-pinned `dominion-plugin.json`. If the package is private, the workflow stops instead of advertising a broken installation. Make the GHCR package public and rerun the workflow. Search by `hushmind3/dominion-assistant` in the DOMINION marketplace; add GitHub topic `dominion-plugin` to participate in general topic search. The v2 bridge is independent of any assistant feature implementation.

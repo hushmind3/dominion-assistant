@@ -1,0 +1,72 @@
+name: Publish OCI plugin
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'app.py'
+      - 'plugin_sdk.py'
+      - 'voice.py'
+      - 'session.py'
+      - 'index.html'
+      - 'app.js'
+      - '.github/workflows/publish-plugin.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  packages: write
+concurrency:
+  group: assistant-plugin-publication
+  cancel-in-progress: true
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    if: github.repository == 'hushmind3/dominion-assistant' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test and build
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s . -p 'test_*.py'
+          docker build -t "ghcr.io/hushmind3/dominion-assistant:sha-$GITHUB_SHA" .
+          docker run -d --name assistant-publish --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m --cap-drop ALL --security-opt no-new-privileges:true --mount type=volume,source=assistant-publish-data,target=/data -p 127.0.0.1:18780:8080 -e DOMINION_BRIDGE_TOKEN=ci-test "ghcr.io/hushmind3/dominion-assistant:sha-$GITHUB_SHA"
+          trap 'docker logs assistant-publish; docker rm -f assistant-publish' EXIT
+          curl --retry 12 --retry-all-errors --retry-delay 1 --max-time 5 --fail http://127.0.0.1:18780/ -o /tmp/assistant.html
+          curl -fsS -H 'Authorization: Bearer ci-test' http://127.0.0.1:18780/dominion/v2/capabilities | python3 -c 'import json,sys; assert json.load(sys.stdin)["version"]==2'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18780/dominion/v2/request)" = 401
+      - name: Publish exact image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          TAG="ghcr.io/hushmind3/dominion-assistant:sha-$GITHUB_SHA"
+          docker push "$TAG"
+          docker image inspect "$TAG" --format '{{json .RepoDigests}}' > /tmp/digests.json
+          docker logout ghcr.io
+          python3 - <<'PY'
+          import json,re
+          rows=json.load(open('/tmp/digests.json'))
+          exact=next(x for x in rows if re.fullmatch(r'ghcr\.io/hushmind3/dominion-assistant@sha256:[0-9a-f]{64}',x))
+          open('/tmp/assistant-image','w').write(exact)
+          PY
+      - name: Require anonymous pull and commit manifest
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$(mktemp -d)"
+          EXACT="$(cat /tmp/assistant-image)"
+          docker image rm "ghcr.io/hushmind3/dominion-assistant:sha-$GITHUB_SHA"
+          docker pull "$EXACT"
+          export EXACT
+          python3 - <<'PY'
+          import json,os
+          m={"schemaVersion":1,"name":"DOMINION Assistant","description":"Independent personal AI assistant with universal DOMINION SDK v2 task and voice support. Requires a compatible host.","version":"0.3.1-"+os.environ["GITHUB_SHA"][:12],"image":os.environ["EXACT"],"network":True,"port":8080}
+          open('dominion-plugin.json','w').write(json.dumps(m,indent=2)+"\n")
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add dominion-plugin.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Publish verified assistant plugin manifest"
+          git push origin HEAD:main
