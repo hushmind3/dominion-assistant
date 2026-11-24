@@ -105,7 +105,7 @@ export default function Messenger({onCall,onLegacy}:Props){
     if(g!==epoch.current)return;change(id,{status:undefined});
     let proposal:any=null;try{proposal=JSON.parse(answer)}catch{}
     if(proposal&&isGoogleTool(proposal.action)){
-     const operation=proposal.action,job={id,operation},messageId='google-job:'+id;
+     const operation:import('./googleTools').GoogleTool=proposal.action,job={id,operation},messageId='google-job:'+id;
      await append({id:messageId,role:'assistant',text:toolLabels[operation]+' · 작업 요청 중',time:Date.now(),status:'pending',localOnly:true,googleJob:job,jobStatus:'submitting'});
      if(g!==epoch.current)return;
      try{const queued=await submitGoogleJob(a,id,operation);if(g!==epoch.current)return;const patch=googleJobMessage(queued);await change(messageId,patch);if(queued.status==='awaiting_auth')Alert.alert('Google 연결 필요','한 번 연결하면 이 업무를 자동으로 이어서 처리합니다.',[{text:'나중에',style:'cancel'},{text:'연결하기',onPress:()=>{if(g===epoch.current)setPanel('services')}}]);return queued.status==='completed'?patch.text:queued.status==='awaiting_auth'?'Google 연결이 필요합니다. 인증 후 이어서 처리할게요.':'업무를 맡았습니다. 완료되면 결과를 남길게요.'}catch(e){if(g!==epoch.current)return;const note='업무 접수 확인 실패 · 다시 확인해 주세요.';await change(messageId,{text:note,status:'failed',jobStatus:'submit_unknown'});setError((e as Error).message);return note}
