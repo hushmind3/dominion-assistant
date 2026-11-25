@@ -9,7 +9,8 @@ data class AssistantProfile(
     val style: String = "자연스럽고 이해하기 쉽게",
     val language: String = "ko",
     val notes: List<String> = emptyList(),
-    val avatar: String = "star"
+    val avatar: String = "star",
+    val photo: String? = null
 ) {
     fun validated(): AssistantProfile {
         val cleanedName = name.trim()
@@ -27,12 +28,15 @@ data class AssistantProfile(
             "기억 메모는 최대 20개, 각 400바이트 이하입니다."
         }
         require(avatar in AVATARS) { "비서 아이콘을 확인해 주세요." }
+        require(photo == null || photo.length <= 262144 &&
+            PHOTO_FORMAT.matches(photo)) { "비서 사진 형식이 올바르지 않습니다." }
         return copy(name = cleanedName, style = cleanedStyle, notes = cleanedNotes)
     }
 
     fun asJson(): JSONObject = JSONObject()
         .put("name", name).put("style", style).put("language", language)
         .put("notes", JSONArray(notes)).put("avatar", avatar)
+        .put("photo", photo ?: JSONObject.NULL)
 
     /** PC supports only these four fields; don't overwrite its unrelated settings. */
     fun pcJson(): JSONObject = JSONObject()
@@ -41,6 +45,7 @@ data class AssistantProfile(
 
     companion object {
         val AVATARS = setOf("star", "moon", "sun", "leaf", "heart", "orbit")
+        private val PHOTO_FORMAT = Regex("^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$")
         fun fromJson(data: JSONObject): AssistantProfile {
             val arr = data.optJSONArray("notes") ?: JSONArray()
             require(arr.length() <= 20)
@@ -52,7 +57,8 @@ data class AssistantProfile(
                 data.optString("name", "나의 AI 비서"),
                 data.optString("style", "자연스럽고 이해하기 쉽게"),
                 data.optString("language", "ko"),
-                lines, data.optString("avatar", "star")
+                lines, data.optString("avatar", "star"),
+                data.optString("photo").takeIf { it.isNotBlank() }
             ).validated()
         }
     }
