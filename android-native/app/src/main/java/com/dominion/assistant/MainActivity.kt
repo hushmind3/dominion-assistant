@@ -123,7 +123,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
                     else -> SettingsScreen(vm,
                         onAssistantSettings = {
                             try {
-                                activity.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+                                activity.startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
                             } catch (_: Exception) {
                                 vm.clearError()
                             }
