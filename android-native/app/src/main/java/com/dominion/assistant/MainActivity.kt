@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.dominion.assistant.data.ChatLine
+import com.dominion.assistant.data.PreparedErrand
 import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.voice.NativeVoice
@@ -293,9 +294,18 @@ private fun ChatScreen(
     val calling = active.phase in setOf("connecting","connected","reconnecting")
     var showActions by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
+    var showWorkSheet by remember { mutableStateOf(false) }
+    var showPcSheet by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
-    LaunchedEffect(vm.messages.size) {
-        if(vm.messages.isNotEmpty()) list.animateScrollToItem(vm.messages.lastIndex)
+    LaunchedEffect(vm.account?.id) {
+        while (vm.account != null) {
+            vm.refreshJobs()
+            delay(15_000)
+        }
+    }
+    LaunchedEffect(vm.messages.size,vm.pendingErrands.size) {
+        val count = list.layoutInfo.totalItemsCount
+        if (count > 0) list.animateScrollToItem(count-1)
     }
     val microphone = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -319,7 +329,7 @@ private fun ChatScreen(
     }
     Column(Modifier.fillMaxSize().background(Forest)) {
 
-        if(showModels && !inVoiceSheet) {
+        if(showModels) {
             Row(Modifier.fillMaxWidth().padding(start=18.dp,end=10.dp),
                 verticalAlignment=Alignment.CenterVertically) {
                 Text("모델 선택",Modifier.weight(1f),color=Secondary,fontSize=12.sp)
@@ -366,6 +376,40 @@ private fun ChatScreen(
                 }
             }
             items(vm.messages) { message -> MessageBubble(message,vm.profile) }
+            items(vm.pendingErrands,key={ "errand:" + it.id }) { errand ->
+                PreparedErrandBubble(
+                    draft=errand,busy=vm.sendingErrandId!=null,
+                    onStart={vm.approveErrand(errand.id)},
+                    onCheck={vm.checkErrand(errand.id)},
+                    onClose={vm.dismissErrand(errand.id)}
+                )
+            }
+            val activeJobs=vm.jobs.filter {
+                it.status in setOf("queued","running","awaiting_human",
+                    "awaiting_approval","awaiting_file","submitting")
+            }.take(3)
+            if(activeJobs.isNotEmpty()) item("active-header") {
+                Text("진행 중인 심부름",color=Secondary,fontSize=12.sp,
+                    modifier=Modifier.padding(start=38.dp,top=6.dp))
+            }
+            items(activeJobs,key={"active:"+it.id}) { work ->
+                Surface(
+                    onClick={if(calling)showWorkSheet=true else onNavigate(1)},
+                    color=Panel,shape=RoundedCornerShape(14.dp),
+                    modifier=Modifier.fillMaxWidth().padding(start=36.dp)
+                ){
+                    Column(Modifier.padding(horizontal=15.dp,vertical=10.dp)) {
+                        Text(work.title,fontSize=14.sp,color=Color(0xFFEDF5F5),
+                            maxLines=2)
+                        Text(when(work.status) {
+                            "awaiting_human" -> "인증이 필요해요"
+                            "awaiting_file" -> "파일을 기다리고 있어요"
+                            "awaiting_approval" -> "확인이 필요해요"
+                            else -> "처리하고 있어요"
+                        },fontSize=12.sp,color=Accent)
+                    }
+                }
+            }
         }
         if(voice.status!="음성 대기"&&!calling) {
             Text(voice.status,color=Secondary,fontSize=11.sp,
@@ -385,10 +429,8 @@ private fun ChatScreen(
                 verticalAlignment=Alignment.Bottom,
                 horizontalArrangement=Arrangement.spacedBy(2.dp)
             ) {
-                if(!calling) {
-                    IconButton(onClick={showActions=true},modifier=Modifier.size(44.dp)) {
-                        Text("+",color=Accent,fontSize=29.sp,fontWeight=FontWeight.Light)
-                    }
+                IconButton(onClick={showActions=true},modifier=Modifier.size(44.dp)) {
+                    Text("+",color=Accent,fontSize=29.sp,fontWeight=FontWeight.Light)
                 }
                 BasicTextField(
                     value=draft,
@@ -455,7 +497,14 @@ private fun ChatScreen(
                 ).forEach { (glyph,label,destination) ->
                     Surface(onClick={
                         showActions=false
-                        if(destination==-1)showModels=true else onNavigate(destination)
+                        when {
+                            destination == -1 -> showModels = true
+                            calling && destination == 1 -> showWorkSheet = true
+                            calling && destination == 4 -> showPcSheet = true
+                            calling && destination == 2 -> Unit
+                            calling && destination == 3 -> Unit
+                            else -> onNavigate(destination)
+                        }
                     },shape=RoundedCornerShape(14.dp),
                         color=Color.Transparent,modifier=Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=13.dp),
@@ -470,6 +519,25 @@ private fun ChatScreen(
             }
         }
     }
+    if(showWorkSheet) {
+        ModalBottomSheet(onDismissRequest={showWorkSheet=false},
+            containerColor=Forest) {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(.83f)) {
+                WorkScreen(vm,open={url->
+                    context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+                })
+            }
+        }
+    }
+    if(showPcSheet) {
+        ModalBottomSheet(onDismissRequest={showPcSheet=false},
+            containerColor=Forest) {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(.83f)) {
+                PcChatScreen(vm)
+            }
+        }
+    }
+
 }
 
 @Composable
@@ -613,6 +681,45 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
                     Text("PC에서 음성 연결을 준비하는 중…", color = Secondary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreparedErrandBubble(
+    draft: PreparedErrand,
+    busy: Boolean,
+    onStart: () -> Unit,
+    onCheck: () -> Unit,
+    onClose: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Bottom) {
+        Box(Modifier.size(28.dp).background(Color(0xFF26383E),CircleShape),
+            contentAlignment=Alignment.Center) {
+            Text("✦",color=Accent,fontSize=15.sp)
+        }
+        Spacer(Modifier.width(9.dp))
+        Surface(color=Panel,shape=RoundedCornerShape(18.dp,18.dp,18.dp,5.dp),
+            modifier=Modifier.weight(1f)) {
+            Column(Modifier.padding(horizontal=15.dp,vertical=13.dp),
+                verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text(draft.title,color=Color(0xFFF0F5F5),
+                    fontSize=15.sp,fontWeight=FontWeight.SemiBold)
+                Text(draft.summary,color=Secondary,fontSize=13.sp,
+                    lineHeight=19.sp,maxLines=8)
+                if (draft.state == "unknown")
+                    Text("접수가 됐는지 확인하고 있어요. 자동으로 다시 보내지 않아요.",
+                        color=Color(0xFFF1C49F),fontSize=12.sp)
+                Row(horizontalArrangement=Arrangement.spacedBy(10.dp),
+                    verticalAlignment=Alignment.CenterVertically) {
+                    Button(
+                        onClick=if(draft.state=="unknown")onCheck else onStart,
+                        enabled=!busy,
+                        contentPadding=PaddingValues(horizontal=15.dp,vertical=8.dp)
+                    ) { Text(if(draft.state=="unknown")"접수 확인" else "부탁하기") }
+                    TextButton(onClick=onClose,enabled=!busy) { Text("닫기") }
                 }
             }
         }
