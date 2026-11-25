@@ -9,6 +9,8 @@ import android.os.*
 import androidx.core.content.ContextCompat
 import com.dominion.assistant.MainActivity
 import com.dominion.assistant.R
+import com.dominion.assistant.data.AccountVault
+import com.dominion.assistant.data.CloudRelay
 import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.room.Room
@@ -34,9 +36,10 @@ class VoiceCallService:Service() {
   const val STOP="com.dominion.assistant.voice.STOP"
   const val MUTE="com.dominion.assistant.voice.MUTE"
   private const val CHANNEL="dominion_voice_calls",ID=4001
-  fun start(context:Context,p:VoicePairing){
+  fun start(context:Context,p:VoicePairing,deviceId:String,voiceId:String){
    ContextCompat.startForegroundService(context,Intent(context,VoiceCallService::class.java).setAction(START)
-    .putExtra("url",p.url).putExtra("token",p.token).putExtra("room",p.room).putExtra("expiresAt",p.expiresAt))
+    .putExtra("url",p.url).putExtra("token",p.token).putExtra("room",p.room).putExtra("expiresAt",p.expiresAt)
+    .putExtra("deviceId",deviceId).putExtra("voiceId",voiceId))
   }
   fun command(context:Context,action:String){
    require(action==STOP||action==MUTE)
@@ -48,6 +51,8 @@ class VoiceCallService:Service() {
  private var connecting:Job?=null
  private var started=false
  private var stopping=false
+ private var activeDevice:String?=null
+ private var activeVoiceId:String?=null
 
  override fun onBind(intent:Intent?):IBinder?=null
  override fun onCreate(){
@@ -93,6 +98,8 @@ class VoiceCallService:Service() {
      VoiceCallState.publish(CallStatus(phase="error",message="통화 서비스를 시작할 수 없습니다."))
      stopSelf();return START_NOT_STICKY
     }
+    activeDevice=intent.getStringExtra("deviceId")
+    activeVoiceId=intent.getStringExtra("voiceId")
     started=true;stopping=false
     VoiceCallState.publish(CallStatus(phase="connecting",message="음성 서버 연결 중"))
     connecting=scope.launch{connect(pairing)}
@@ -154,10 +161,24 @@ class VoiceCallService:Service() {
   connecting?.cancel();connecting=null
   room?.release();room=null
   started=false
-  if(!preserveError)VoiceCallState.publish(CallStatus())
-  stopForeground(STOP_FOREGROUND_REMOVE)
-  stopSelf()
+  val device=activeDevice;val voiceId=activeVoiceId
+  activeDevice=null;activeVoiceId=null
+  scope.launch {
+   if(device!=null&&voiceId!=null){
+    // Remote stop is best effort; an uncertain stop is never retried automatically.
+    withTimeoutOrNull(8000) {
+     try {
+      val account=withContext(Dispatchers.IO){AccountVault(this@VoiceCallService).load()}
+      if(account!=null)CloudRelay().voiceCommand(account,device,"stop",voiceId)
+     }catch(_:Exception){}
+    }
+   }
+   if(!preserveError)VoiceCallState.publish(CallStatus())
+   stopForeground(STOP_FOREGROUND_REMOVE)
+   stopSelf()
+  }
  }
+
  override fun onDestroy(){
   connecting?.cancel();room?.release();room=null
   scope.cancel();super.onDestroy()
