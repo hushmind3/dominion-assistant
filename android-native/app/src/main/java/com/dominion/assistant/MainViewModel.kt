@@ -15,6 +15,7 @@ import com.dominion.assistant.data.AssistantRepository
 import com.dominion.assistant.data.ChatLine
 import com.dominion.assistant.data.CloudError
 import com.dominion.assistant.data.ConversationStore
+import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
@@ -51,6 +52,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var error by mutableStateOf("")
         private set
     var messages by mutableStateOf<List<ChatLine>>(emptyList())
+        private set
+    var profile by mutableStateOf(AssistantProfile())
+        private set
+    var profileBusy by mutableStateOf(false)
         private set
     var models by mutableStateOf<List<String>>(emptyList())
         private set
@@ -94,11 +99,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // Keep the valid encrypted token and local journal during network outages.
                         account = previous
                         messages = withContext(Dispatchers.IO) { history.history(previous.id) }
+                    profile = withContext(Dispatchers.IO) { history.readProfile(previous.id) }
                         error = "Cloud 연결을 확인해 주세요."
                     }
                 } catch (_: Exception) {
                     account = previous
                     messages = withContext(Dispatchers.IO) { history.history(previous.id) }
+                    profile = withContext(Dispatchers.IO) { history.readProfile(previous.id) }
                     error = "네트워크 연결을 확인해 주세요."
                 }
             }
@@ -111,6 +118,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshPushStatus()
         error = ""
         messages = withContext(Dispatchers.IO) { history.history(value.id) }
+        profile = withContext(Dispatchers.IO) { history.readProfile(value.id) }
         refreshModels()
         refreshJobs()
         refreshPcs()
@@ -153,6 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val hadCall=VoiceCallState.state.value.phase in setOf("connecting","connected","reconnecting")
         account = null
         messages = emptyList()
+        profile = AssistantProfile()
         pushEnabled = false
         jobs = emptyList()
         pcs = emptyList()
@@ -210,7 +219,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 withContext(Dispatchers.IO) { history.append(current.id, "user", input) }
                 messages = messages + ChatLine("user", input, System.currentTimeMillis())
-                val response = repository.reply(current, selectedModel, messages)
+                val response = repository.reply(current, selectedModel, messages, profile)
                 withContext(Dispatchers.IO) { history.append(current.id, "assistant", response) }
                 if (account?.id == current.id) {
                     messages = messages + ChatLine("assistant", response, System.currentTimeMillis())
@@ -221,6 +230,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun saveProfile(next: AssistantProfile, onSaved: () -> Unit = {}) {
+        val current = account ?: return
+        if (profileBusy) return
+        val valid = try { next.validated() } catch (e: Exception) {
+            error = e.message ?: "프로필 설정을 확인해 주세요."
+            return
+        }
+        profileBusy = true
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { history.saveProfile(current.id, valid) }
+                if (account?.id == current.id) {
+                    profile = valid
+                    onSaved()
+                }
+            } catch (e: Exception) {
+                error = e.message ?: "프로필 저장에 실패했습니다."
+            } finally { profileBusy = false }
+        }
+    }
+
+    fun syncProfileToPc(pc: RemotePc) {
+        val current = account ?: return
+        if (profileBusy) return
+        profileBusy = true
+        viewModelScope.launch {
+            try {
+                repository.syncPcProfile(current, pc, profile)
+                if (account?.id == current.id) {
+                    error = "선택한 PC에 프로필을 반영했습니다."
+                }
+            } catch (e: Exception) {
+                error = "PC 프로필 반영 실패: " + (e.message ?: "네트워크 오류")
+            } finally { profileBusy = false }
         }
     }
 
