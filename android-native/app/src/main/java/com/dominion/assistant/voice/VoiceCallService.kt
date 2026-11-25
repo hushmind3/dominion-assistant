@@ -35,7 +35,8 @@ class VoiceCallService:Service() {
   const val START="com.dominion.assistant.voice.START"
   const val STOP="com.dominion.assistant.voice.STOP"
   const val MUTE="com.dominion.assistant.voice.MUTE"
-  private const val CHANNEL="dominion_voice_calls",ID=4001
+  private const val CHANNEL="dominion_voice_calls"
+  private const val ID=4001
   fun start(context:Context,p:VoicePairing,deviceId:String,voiceId:String){
    ContextCompat.startForegroundService(context,Intent(context,VoiceCallService::class.java).setAction(START)
     .putExtra("url",p.url).putExtra("token",p.token).putExtra("room",p.room).putExtra("expiresAt",p.expiresAt)
