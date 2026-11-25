@@ -19,6 +19,7 @@ import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
 import com.dominion.assistant.data.InboxMessage
+import com.dominion.assistant.push.NativePush
 import com.dominion.assistant.voice.VoicePairing
 import com.dominion.assistant.voice.voiceId
 import com.dominion.assistant.voice.VoiceCallState
@@ -35,6 +36,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val vault = AccountVault(application)
     private val history = ConversationStore(application)
     private val repository = AssistantRepository()
+    private val notifications = NativePush(application)
     private var pairingJob: Job? = null
 
     var account by mutableStateOf<Account?>(null)
@@ -67,6 +69,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var pcBusy by mutableStateOf(false)
         private set
+    var pushConfigured by mutableStateOf(notifications.configured())
+        private set
+    var pushEnabled by mutableStateOf(false)
+        private set
+    var pushBusy by mutableStateOf(false)
+        private set
 
     init {
         viewModelScope.launch {
@@ -97,6 +105,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun install(value: Account) {
         withContext(Dispatchers.IO) { vault.save(value) }
         account = value
+        refreshPushStatus()
         error = ""
         messages = withContext(Dispatchers.IO) { history.history(value.id) }
         refreshModels()
@@ -140,6 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val hadCall=VoiceCallState.state.value.phase in setOf("connecting","connected","reconnecting")
         account = null
         messages = emptyList()
+        pushEnabled = false
         jobs = emptyList()
         pcs = emptyList()
         pcTurns = emptyList()
@@ -156,6 +166,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             if (previous != null) {
+                // Unsubscribe before revoking the app session.
+                try { notifications.disable(previous) } catch (_: Exception) {}
                 try { repository.logout(previous) } catch (_: Exception) {}
                 withContext(Dispatchers.IO) { vault.clear() }
             }
@@ -204,6 +216,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun refreshPushStatus() {
+        pushConfigured=notifications.configured()
+        pushEnabled=account?.let{notifications.enabled(it)}?:false
+    }
+    fun enablePush() {
+        val current=account?:return
+        if(pushBusy)return
+        pushBusy=true
+        viewModelScope.launch {
+            try {
+                notifications.enable(current)
+                if(account?.id==current.id)refreshPushStatus()
+            }catch(e:Exception){
+                error=e.message?:"알림 등록에 실패했습니다."
+            }finally{pushBusy=false}
+        }
+    }
+    fun disablePush() {
+        val current=account?:return
+        if(pushBusy)return
+        pushBusy=true
+        viewModelScope.launch {
+            try {
+                notifications.disable(current)
+                if(account?.id==current.id)refreshPushStatus()
+            }catch(e:Exception){
+                error=e.message?:"알림 해제에 실패했습니다."
+            }finally{pushBusy=false}
         }
     }
 
