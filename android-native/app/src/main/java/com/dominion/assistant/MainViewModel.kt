@@ -370,7 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 if (account?.id == current.id) {
                     val definitelyRejected = e is CloudError &&
-                        e.statusCode in setOf(400, 401, 403, 404, 413, 429)
+                        e.statusCode in setOf(400, 401, 403, 404, 413)
                     if (!definitelyRejected) {
                         withContext(Dispatchers.IO) {
                             history.updateErrandState(current.id, id, "unknown")
@@ -437,7 +437,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissErrand(id: String) {
         val current = account ?: return
         if (sendingErrandId == id) return
-        if (pendingErrands.none { it.id == id }) return
+        if (pendingErrands.none { it.id == id && it.state != "submitted" }) return
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { history.deleteErrand(current.id, id) }
@@ -955,7 +955,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = account ?: return
         viewModelScope.launch {
             withContext(Dispatchers.IO) { history.clear(current.id) }
-            messages = emptyList()
+            if(account?.id == current.id) {
+                messages = emptyList()
+                pendingErrands = emptyList()
+            }
         }
     }
 
