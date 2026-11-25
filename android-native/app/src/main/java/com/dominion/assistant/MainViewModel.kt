@@ -1,6 +1,9 @@
 package com.dominion.assistant
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
+import java.io.ByteArrayOutputStream
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -206,6 +209,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 refreshJobs()
             } catch (e: Exception) {
                 error = e.message ?: "브라우저 업무 실행 실패"
+            }
+        }
+    }
+
+    fun connectGoogle(open: (String) -> Unit) {
+        val current = account ?: return
+        viewModelScope.launch {
+            try {
+                open(repository.googleConnect(current))
+            } catch (e: Exception) {
+                error = e.message ?: "Google 서비스 연결 실패"
+            }
+        }
+    }
+
+    fun reviewWork(item: WorkItem, action: String, open: (String) -> Unit = {}) {
+        val current = account ?: return
+        viewModelScope.launch {
+            try {
+                val link = repository.browserAction(current, item, action)
+                if (link != null) open(link)
+                else refreshJobs()
+            } catch (e: Exception) {
+                error = e.message ?: "업무 승인 처리 실패"
+            }
+        }
+    }
+
+    fun uploadWorkFile(item: WorkItem, uri: Uri) {
+        val current = account ?: return
+        viewModelScope.launch {
+            try {
+                val (name, mime, bytes) = withContext(Dispatchers.IO) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val mime = resolver.getType(uri) ?: throw IllegalArgumentException("지원하지 않는 파일")
+                    val suggested = when (mime) {
+                        "application/pdf" -> "document.pdf"
+                        "image/jpeg" -> "image.jpg"
+                        "image/png" -> "image.png"
+                        else -> throw IllegalArgumentException("PDF, JPG, PNG만 첨부할 수 있습니다.")
+                    }
+                    var name = suggested
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME),
+                        null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) name = cursor.getString(0) ?: suggested
+                    }
+                    val input = resolver.openInputStream(uri)
+                        ?: throw IllegalArgumentException("선택한 파일을 읽을 수 없습니다.")
+                    val output = ByteArrayOutputStream()
+                    input.use {
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val n = it.read(buffer)
+                            if (n < 0) break
+                            if (output.size() + n > 2 * 1024 * 1024) {
+                                throw IllegalArgumentException("첨부는 최대 2MB입니다.")
+                            }
+                            output.write(buffer, 0, n)
+                        }
+                    }
+                    Triple(name, mime, output.toByteArray())
+                }
+                repository.browserUpload(current, item, name, mime, bytes)
+                refreshJobs()
+            } catch (e: Exception) {
+                error = e.message ?: "파일을 전송하지 못했습니다."
             }
         }
     }
