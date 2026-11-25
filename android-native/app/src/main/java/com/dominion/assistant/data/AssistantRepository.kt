@@ -10,7 +10,9 @@ import java.util.Base64
 data class Pairing(val token: String, val url: String, val expiresAt: Long)
 data class WorkItem(
     val id: String, val kind: String, val status: String,
-    val title: String, val detail: String, val updatedAt: Long
+    val title: String, val detail: String, val updatedAt: Long,
+    val approvalId: String? = null, val approvalLabel: String? = null,
+    val approvalPreview: String? = null
 )
 class AssistantRepository(private val api: CloudApi = CloudApi()) {
     private fun obj(vararg pairs: Pair<String, Any?>): JSONObject = JSONObject().apply {
@@ -159,12 +161,70 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
                 val row = items.optJSONObject(it) ?: return@mapNotNull null
                 row.optString("subject").ifBlank {
                     row.optString("title").ifBlank { row.optString("name") }
-                }.take(120).ifBlank { null }
+                }.take(120).takeIf { it.isNotBlank() }
             }.joinToString("\n").ifBlank { "조회 결과가 없습니다." }
         } else if (status == "completed") {
             result?.optString("summary").orEmpty().ifBlank { "완료됨" }
         } else data.optString("message").ifBlank { data.optString("error") }
-        return WorkItem(id, kind, status, title, details.take(600), updatedAt)
+        val approval = data.optJSONObject("approval")
+        return WorkItem(id, kind, status, title, details.take(600), updatedAt,
+            approval?.optString("id")?.takeIf {
+                Regex("^[a-zA-Z0-9_-]{8,80}$").matches(it)
+            }, approval?.optString("label")?.take(140),
+            approval?.optString("preview")?.take(900))
+    }
+
+    suspend fun googleConnect(account: Account): String {
+        val url = api.post("/v1/assistant/google/start", obj(), account.token)
+            .getString("url")
+        val parsed = java.net.URI(url)
+        require(parsed.scheme == "https" && parsed.host == "accounts.google.com") {
+            "Invalid Google authorization URL"
+        }
+        return url
+    }
+
+    suspend fun browserAction(account: Account, item: WorkItem, action: String): String? {
+        require(item.kind == "browser" && action in setOf("approve", "resume", "view"))
+        val body = obj("id" to item.id)
+        if (item.approvalId != null) body.put("approvalId", item.approvalId)
+        val payload = obj("kind" to "browser", "id" to item.id, "action" to action)
+        if (item.approvalId != null) payload.put("approvalId", item.approvalId)
+        val result = postWork(account, payload, "/v1/assistant/browser/" + action, body)
+        if (action != "view") return null
+        val url = result.getString("url")
+        val parsed = java.net.URI(url)
+        require(parsed.scheme == "https" && parsed.host == "live.browser.run") {
+            "Invalid browser handoff URL"
+        }
+        return url
+    }
+
+    suspend fun browserUpload(account: Account, item: WorkItem,
+                              name: String, mime: String, content: ByteArray) {
+        require(item.kind == "browser" && item.approvalId != null &&
+            name.length in 1..120 && !Regex("[\\\\/\\p{Cntrl}]").containsMatchIn(name))
+        require(mime in setOf("application/pdf", "image/jpeg", "image/png"))
+        require(content.size in 8..(2 * 1024 * 1024))
+        val magicValid = when (mime) {
+            "application/pdf" -> name.endsWith(".pdf", true) &&
+                String(content.copyOfRange(0, 5), Charsets.US_ASCII) == "%PDF-"
+            "image/jpeg" -> name.matches(Regex(".*\\.jpe?g", RegexOption.IGNORE_CASE)) &&
+                content[0].toInt() and 0xff == 0xff &&
+                content[1].toInt() and 0xff == 0xd8 &&
+                content[2].toInt() and 0xff == 0xff
+            else -> name.endsWith(".png", true) &&
+                content.take(8) == listOf(137, 80, 78, 71, 13, 10, 26, 10)
+                    .map { it.toByte() }
+        }
+        require(magicValid) { "파일 형식이 일치하지 않습니다." }
+        api.post("/v1/assistant/browser/upload",
+            obj("id" to item.id, "approvalId" to item.approvalId,
+                "confirmed" to true,
+                "file" to obj("name" to name, "mime" to mime,
+                    "base64" to android.util.Base64.encodeToString(
+                        content, android.util.Base64.NO_WRAP))),
+            account.token)
     }
 
     suspend fun jobs(account: Account): List<WorkItem> {
