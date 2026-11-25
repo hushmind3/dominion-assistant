@@ -79,7 +79,7 @@ fun PcChatScreen(vm:MainViewModel) {
         }
     }
     LaunchedEffect(vm.pcTurns.size,vm.selectedPcId) {
-        if(vm.pcTurns.isNotEmpty())list.animateScrollToItem(vm.pcTurns.lastIndex)
+        if(vm.pcTurns.isNotEmpty())list.animateScrollToItem(minOf(vm.pcTurns.size,100)-1)
     }
 
     Column(Modifier.fillMaxSize()) {

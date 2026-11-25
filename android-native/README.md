@@ -63,3 +63,12 @@ FCM is intentionally **opt-in**. The source builds without a Firebase project an
 Expo clients keep their existing ExpoPushToken registration and notification path, without requiring Firebase Android configuration.
 
 The Cloud menu endpoint `GET /v1/assistant/work/ui` returns versioned JSON for **known** Google read actions and a web-task URL/goal form. Native client discards unknown action codes, scripts, oversized descriptions and unsupported schema versions. It never evaluates JavaScript downloaded from the server.
+
+## Native app parity work (2026-11-25)
+
+- Assistant profile: local name, voice/style instructions, language, 20 editable memory notes, 6 avatars and a compressed local JPEG photo; optional explicit PC profile sync.
+- Chat tab offers **AI conversation** and **PC work conversation** views. The latter retrieves PC task status and mirrors up to 200 turns **per account and PC** to the local SQLite database, with offline cached viewing.
+- PC conversation accepts an approved document or camera photo. Cloud WebSocket RPC uses an 850KB application-enforced body limit; native attachment content is capped at 512KiB after optional on-device JPEG compression. Larger documents require PC-local transfer.
+- Local reminders use Android WorkManager, not Firebase: schedule, list and cancel, with on-device notifications and Android 13+ consent. Delivery is **inexact** under power management.
+- **Legacy Expo chat remains stored in Expo's private SQLite**, not automatically shared with the native app. PC task history is synchronized from the PC; this is not full Expo chat sync.
+- Android CI builds and unit-tests native code. This does not establish successful device-level microphone, camera, FCM or PC network operation.

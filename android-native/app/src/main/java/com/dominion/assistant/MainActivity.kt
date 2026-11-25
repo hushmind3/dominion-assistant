@@ -510,6 +510,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
             }
         }
         PcWorkPanel(vm)
+        ReminderPanel(vm)
         val serverUi=vm.dynamicWorkUi
         if(serverUi!=null){
             if(serverUi.isEmpty()) Text("Cloud에서 사용 가능한 업무 도구가 없습니다.",
