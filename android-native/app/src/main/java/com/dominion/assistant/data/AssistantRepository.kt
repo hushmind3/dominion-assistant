@@ -120,15 +120,15 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
     }
 
     suspend fun browser(account: Account, url: String, goal: String) {
-        val parsed = java.net.URI(url.trim())
-        require(parsed.scheme == "https" && !parsed.host.isNullOrBlank() &&
-            parsed.rawUserInfo == null && parsed.port == -1 && goal.trim().isNotBlank() &&
-            goal.length <= 4000) { "HTTPS 사이트와 업무 내용을 확인해 주세요." }
+        val parsed = WorkInputPolicy.officialHttps(url)
+        require(parsed != null && goal.trim().isNotBlank() && goal.length <= 4000) {
+            "공식 HTTPS 사이트와 업무 내용을 확인해 주세요."
+        }
         val id = java.util.UUID.randomUUID().toString()
-        val body = obj("id" to id, "url" to parsed.toString(),
+        val body = obj("id" to id, "url" to parsed,
             "goal" to goal.trim(), "confirmed" to true, "remember" to false)
         postWork(account, obj("kind" to "browser", "id" to id,
-            "url" to parsed.toString(), "goal" to goal.trim(),
+            "url" to parsed, "goal" to goal.trim(),
             "confirmed" to true, "remember" to false),
             "/v1/assistant/browser/start", body)
     }
@@ -203,21 +203,9 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
     suspend fun browserUpload(account: Account, item: WorkItem,
                               name: String, mime: String, content: ByteArray) {
         require(item.kind == "browser" && item.approvalId != null &&
-            name.length in 1..120 && !Regex("[\\\\/\\p{Cntrl}]").containsMatchIn(name))
-        require(mime in setOf("application/pdf", "image/jpeg", "image/png"))
-        require(content.size in 8..(2 * 1024 * 1024))
-        val magicValid = when (mime) {
-            "application/pdf" -> name.endsWith(".pdf", true) &&
-                String(content.copyOfRange(0, 5), Charsets.US_ASCII) == "%PDF-"
-            "image/jpeg" -> name.matches(Regex(".*\\.jpe?g", RegexOption.IGNORE_CASE)) &&
-                content[0].toInt() and 0xff == 0xff &&
-                content[1].toInt() and 0xff == 0xd8 &&
-                content[2].toInt() and 0xff == 0xff
-            else -> name.endsWith(".png", true) &&
-                content.take(8) == listOf(137, 80, 78, 71, 13, 10, 26, 10)
-                    .map { it.toByte() }
+            WorkInputPolicy.validFile(name, mime, content)) {
+            "파일 이름·형식·크기를 확인해 주세요."
         }
-        require(magicValid) { "파일 형식이 일치하지 않습니다." }
         api.post("/v1/assistant/browser/upload",
             obj("id" to item.id, "approvalId" to item.approvalId,
                 "confirmed" to true,
