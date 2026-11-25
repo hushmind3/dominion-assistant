@@ -11,7 +11,8 @@ import java.util.Base64
 data class Pairing(val token: String, val url: String, val expiresAt: Long)
 data class RemotePc(val id: String, val name: String, val online: Boolean)
 data class PcTurn(val requestId: String, val text: String, val status: String,
-                  val answer: String, val createdAt: Long, val kind: String)
+                  val answer: String, val createdAt: Long, val kind: String,
+                  val attachmentName: String? = null, val error: String? = null)
 data class InboxMessage(val id: String, val deviceId: String,
                         val text: String, val time: Long)
 data class WorkItem(
@@ -92,20 +93,35 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
             PcTurn(
                 id,row.optString("text").take(4000),row.optString("status").take(40),
                 row.optString("answer").take(12_000),
-                row.optLong("createdAt"),row.optString("kind").take(30)
+                row.optLong("createdAt"),row.optString("kind").take(30),
+                row.optJSONObject("attachment")?.optString("name")?.take(160),
+                row.optString("error").take(500).ifBlank { null }
             )
         }
     }
 
-    suspend fun sendPc(account:Account,pc:RemotePc,text:String):String {
+    suspend fun sendPc(account:Account,pc:RemotePc,text:String,attachmentId:String?=null):String {
         require(pc.online) { "PC가 오프라인입니다." }
-        require(text.trim().length in 1..4000)
+        val input=text.trim()
+        require(input.isNotBlank() && input.toByteArray(Charsets.UTF_8).size<=6000)
+        if(attachmentId!=null)require(Regex("^[a-f0-9]{64}$").matches(attachmentId))
         val id=java.util.UUID.randomUUID().toString()
-        val body=obj("clientId" to id,"text" to text.trim(),"kind" to "task")
+        val body=obj("clientId" to id,"text" to input,"kind" to "task")
+        if(attachmentId!=null)body.put("attachmentId",attachmentId)
         val result=CloudRelay().request(account,pc.id,"send",body)
         val requestId=result.getString("requestId")
         require(java.util.UUID.fromString(requestId).toString()==requestId)
         return requestId
+    }
+
+    suspend fun sendPcAttachment(account:Account,pc:RemotePc,text:String,
+                                 attachment:PcAttachment):String {
+        require(pc.online && text.trim().isNotBlank())
+        val receipt=CloudRelay().request(account,pc.id,"attachment",
+            attachment.asBody(text.trim()))
+        val id=receipt.getString("id")
+        require(Regex("^[a-f0-9]{64}$").matches(id)) { "PC 첨부 등록 응답이 올바르지 않습니다." }
+        return sendPc(account,pc,text,id)
     }
 
     suspend fun cancelPc(account:Account,pc:RemotePc,requestId:String) {
