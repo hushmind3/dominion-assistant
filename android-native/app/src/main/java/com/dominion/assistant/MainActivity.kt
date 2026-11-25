@@ -111,6 +111,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
             drawer.close()
         }
     }
+    LaunchedEffect(page) {
+        if(page==5)vm.refreshReminders()
+    }
     ModalNavigationDrawer(
         drawerState=drawer,
         gesturesEnabled=vm.account!=null&&!inCall,
@@ -130,6 +133,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                     HorizontalDivider(color=Color(0xFF35443B))
                     listOf(
                         Triple(0,"대화","◌"),
+                        Triple(1,"진행 중인 업무","▤"),
+                        Triple(5,"일정 및 알림","▦"),
+                        Triple(4,"PC와 대화·파일","▣"),
                         Triple(2,"통화","☎"),
                         Triple(3,"설정","⚙")
                     ).forEach { (index,label,glyph) ->
@@ -183,11 +189,6 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                                 maxLines=1,overflow=TextOverflow.Ellipsis)
                             Text(" ✎",color=Secondary,fontSize=18.sp)
                         }
-                        if(vm.account!=null) {
-                            IconButton(onClick={page=2}) {
-                                Text("☎",fontSize=23.sp,color=Accent)
-                            }
-                        }
                         if(vm.busy)CircularProgressIndicator(
                             Modifier.size(18.dp),strokeWidth=2.dp,color=Accent)
                     }
@@ -228,6 +229,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                         })
                         2 -> CallScreen(vm,activity,voice)
                         4 -> PcChatScreen(vm)
+                        5 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                            ReminderPanel(vm)
+                        }
                         else -> SettingsScreen(vm,
                             onAssistantSettings={
                                 runCatching{
@@ -377,12 +381,14 @@ private fun ChatScreen(
                 ) {
                     AssistantAvatarView(vm.profile,if(inVoiceSheet)48.dp else 74.dp)
                     Spacer(Modifier.height(5.dp))
-                    Text("무엇을 도와드릴까요?",
+                    Text(vm.profile.name,
                         color=Color(0xFFEFF5F0),
-                        fontSize=if(inVoiceSheet)19.sp else 24.sp,
-                        fontWeight=FontWeight.SemiBold)
-                    Text("이야기부터 심부름까지, 편하게 말씀하세요.",
-                        color=Secondary,fontSize=13.sp,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                        fontSize=if(inVoiceSheet)19.sp else 26.sp,
+                        fontWeight=FontWeight.Bold,
+                        modifier=Modifier.clickable { onNavigate(3) })
+                    if(!inVoiceSheet)Text("이름 편집 ✎",
+                        color=Secondary,fontSize=13.sp,
+                        modifier=Modifier.clickable { onNavigate(3) })
                 }
             }
             items(vm.messages) { message -> MessageBubble(message,vm.profile) }
@@ -498,11 +504,21 @@ private fun ChatScreen(
                         }
                     }
                 )
-                if(draft.isBlank()&&!calling) {
+                if(!calling) {
                     IconButton(onClick=dictate,modifier=Modifier.size(44.dp)) {
                         Text(if(voice.listening)"■" else "🎙",
                             color=if(voice.listening)Color(0xFFE9B5AB) else Secondary,
                             fontSize=18.sp)
+                    }
+                    FilledIconButton(
+                        enabled=!vm.busy&&!voice.listening,
+                        onClick={onNavigate(2)},
+                        modifier=Modifier.size(44.dp),
+                        colors=IconButtonDefaults.filledIconButtonColors(
+                            containerColor=Accent,contentColor=Forest
+                        )
+                    ) {
+                        Text("☎",fontSize=23.sp)
                     }
                 }
                 if(draft.isNotBlank()) {
@@ -540,7 +556,7 @@ private fun ChatScreen(
                 listOf(
                     Triple("✦","심부름 맡기기",1),
                     Triple("▤","PC와 대화·파일",4),
-                    Triple("◷","일정·알림",1),
+                    Triple("◷","일정·알림",5),
                     Triple("☎","통화",2),
                     Triple("◇","모델 바꾸기",-1),
                     Triple("◎","설정",3)
