@@ -296,7 +296,7 @@ class ConversationStore(context: Context) :
                 arrayOf(account, account)
             )
             db.execSQL("DELETE FROM mail_notices WHERE account_id=? AND created_at<?",
-                arrayOf(account, System.currentTimeMillis() - 31L * 86400000))
+                arrayOf<Any>(account, System.currentTimeMillis() - 31L * 86400000))
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
         return notes
