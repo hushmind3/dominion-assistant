@@ -14,6 +14,7 @@ import com.dominion.assistant.data.CloudRelay
 import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.room.Room
+import com.twilio.audioswitch.AudioDevice
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +22,7 @@ import org.json.JSONObject
 
 data class CallStatus(
  val phase:String="idle", val message:String="",val muted:Boolean=false,
- val botJoined:Boolean=false,val startedAt:Long=0L
+ val botJoined:Boolean=false,val startedAt:Long=0L,val speakerForced:Boolean=false
 )
 object VoiceCallState {
  private val mutable=MutableStateFlow(CallStatus())
@@ -35,6 +36,7 @@ class VoiceCallService:Service() {
   const val START="com.dominion.assistant.voice.START"
   const val STOP="com.dominion.assistant.voice.STOP"
   const val MUTE="com.dominion.assistant.voice.MUTE"
+  const val SPEAKER="com.dominion.assistant.voice.SPEAKER"
   private const val CHANNEL="dominion_voice_calls"
   private const val ID=4001
   fun start(context:Context,p:VoicePairing,deviceId:String,voiceId:String){
@@ -43,7 +45,7 @@ class VoiceCallService:Service() {
     .putExtra("deviceId",deviceId).putExtra("voiceId",voiceId))
   }
   fun command(context:Context,action:String){
-   require(action==STOP||action==MUTE)
+   require(action==STOP||action==MUTE||action==SPEAKER)
    context.startService(Intent(context,VoiceCallService::class.java).setAction(action))
   }
  }
@@ -107,6 +109,23 @@ class VoiceCallService:Service() {
     connecting=scope.launch{connect(pairing)}
    }
    STOP->stopCall()
+   SPEAKER->if(started&&!stopping) {
+    val handler=room?.audioSwitchHandler
+    if(handler!=null) {
+     val forced=VoiceCallState.state.value.speakerForced
+     if(forced) {
+      handler.selectDevice(null)
+      VoiceCallState.publish(VoiceCallState.state.value.copy(speakerForced=false))
+     } else {
+      val output=handler.availableAudioDevices.firstOrNull { it is AudioDevice.Speakerphone }
+      if(output!=null){
+       handler.selectDevice(output)
+       VoiceCallState.publish(VoiceCallState.state.value.copy(speakerForced=true))
+      } else VoiceCallState.publish(
+       VoiceCallState.state.value.copy(message="스피커 장치를 사용할 수 없습니다."))
+     }
+    }
+   }
    MUTE->if(started&&!stopping)scope.launch{
     val active=room?:return@launch
     val newMute=!VoiceCallState.state.value.muted
