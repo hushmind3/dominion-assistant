@@ -58,7 +58,8 @@ data class AssistantProfile(
                 data.optString("style", "자연스럽고 이해하기 쉽게"),
                 data.optString("language", "ko"),
                 lines, data.optString("avatar", "star"),
-                data.optString("photo").takeIf { it.isNotBlank() }
+                if (data.isNull("photo")) null
+                else data.optString("photo").takeIf { it.isNotBlank() }
             ).validated()
         }
     }

@@ -104,15 +104,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         error = "로그인이 만료되었습니다. 다시 연결해 주세요."
                     } else {
                         // Keep the valid encrypted token and local journal during network outages.
+                        val restored = withContext(Dispatchers.IO) {
+                            history.readProfile(previous.id) to history.history(previous.id)
+                        }
+                        profile = restored.first
+                        messages = restored.second
                         account = previous
-                        messages = withContext(Dispatchers.IO) { history.history(previous.id) }
-                    profile = withContext(Dispatchers.IO) { history.readProfile(previous.id) }
                         error = "Cloud 연결을 확인해 주세요."
                     }
                 } catch (_: Exception) {
-                    account = previous
-                    messages = withContext(Dispatchers.IO) { history.history(previous.id) }
-                    profile = withContext(Dispatchers.IO) { history.readProfile(previous.id) }
+                    val restored = withContext(Dispatchers.IO) {
+                            history.readProfile(previous.id) to history.history(previous.id)
+                        }
+                        profile = restored.first
+                        messages = restored.second
+                        account = previous
                     error = "네트워크 연결을 확인해 주세요."
                 }
             }
@@ -120,12 +126,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun install(value: Account) {
-        withContext(Dispatchers.IO) { vault.save(value) }
+        val saved = withContext(Dispatchers.IO) {
+            val restoredProfile = history.readProfile(value.id)
+            val restoredMessages = history.history(value.id)
+            vault.save(value)
+            restoredProfile to restoredMessages
+        }
+        profile = saved.first
+        messages = saved.second
         account = value
         refreshPushStatus()
         error = ""
-        messages = withContext(Dispatchers.IO) { history.history(value.id) }
-        profile = withContext(Dispatchers.IO) { history.readProfile(value.id) }
         refreshModels()
         refreshJobs()
         refreshPcs()
