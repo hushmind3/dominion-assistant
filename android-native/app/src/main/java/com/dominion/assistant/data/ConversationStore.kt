@@ -9,7 +9,7 @@ data class ChatLine(val role: String, val text: String, val createdAt: Long)
 
 /** Simple account-isolated local conversation mirror; capped to 200 turns per account. */
 class ConversationStore(context: Context) :
-    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 2) {
+    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE messages (" +
@@ -19,6 +19,7 @@ class ConversationStore(context: Context) :
         )
         db.execSQL("CREATE INDEX idx_messages_account ON messages(account_id,id)")
         createProfiles(db)
+        createPcTurns(db)
     }
 
     private fun createProfiles(db: SQLiteDatabase) {
@@ -26,9 +27,19 @@ class ConversationStore(context: Context) :
             "account_id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
     }
 
+    private fun createPcTurns(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS pc_turns (" +
+            "account_id TEXT NOT NULL, device_id TEXT NOT NULL," +
+            "request_id TEXT NOT NULL, created_at INTEGER NOT NULL," +
+            "data TEXT NOT NULL, PRIMARY KEY(account_id,device_id,request_id))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_pc_turns_device " +
+            "ON pc_turns(account_id,device_id,created_at,request_id)")
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Existing conversations are never dropped or rewritten.
         if (oldVersion < 2) createProfiles(db)
+        if (oldVersion < 3) createPcTurns(db)
     }
 
     fun readProfile(account: String): AssistantProfile {
@@ -52,6 +63,72 @@ class ConversationStore(context: Context) :
         }
         writableDatabase.insertWithOnConflict(
             "profiles", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun pcHistory(account: String, device: String): List<PcTurn> {
+        val results = mutableListOf<PcTurn>()
+        readableDatabase.query("pc_turns", arrayOf("data"),
+            "account_id=? AND device_id=?", arrayOf(account,device),
+            null,null,"created_at DESC,request_id DESC","200").use { cursor ->
+            while(cursor.moveToNext()) {
+                try {
+                    val row = org.json.JSONObject(cursor.getString(0))
+                    results.add(PcTurn(
+                        requestId=row.getString("requestId"),
+                        text=row.getString("text"),
+                        status=row.getString("status"),
+                        answer=row.optString("answer"),
+                        createdAt=row.optLong("createdAt"),
+                        kind=row.optString("kind"),
+                        attachmentName=row.optString("attachmentName").ifBlank{null},
+                        error=row.optString("error").ifBlank{null}
+                    ))
+                } catch (_: Exception) {
+                    // Skip damaged cached records, preserve all other records.
+                }
+            }
+        }
+        return results.asReversed()
+    }
+
+    fun mirrorPcHistory(account: String, device: String, updates: List<PcTurn>) {
+        if(updates.isEmpty()) return
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            for(turn in updates.takeLast(200)) {
+                if(!runCatching {
+                    java.util.UUID.fromString(turn.requestId).toString() == turn.requestId
+                }.getOrDefault(false))continue
+                val json=org.json.JSONObject()
+                    .put("requestId",turn.requestId)
+                    .put("text",turn.text.take(6000))
+                    .put("status",turn.status.take(40))
+                    .put("answer",turn.answer.take(12000))
+                    .put("createdAt",turn.createdAt)
+                    .put("kind",turn.kind.take(40))
+                    .put("attachmentName",turn.attachmentName ?: "")
+                    .put("error",turn.error ?: "")
+                val values=ContentValues().apply {
+                    put("account_id",account);put("device_id",device)
+                    put("request_id",turn.requestId)
+                    put("created_at",turn.createdAt)
+                    put("data",json.toString())
+                }
+                db.insertWithOnConflict("pc_turns",null,values,SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.execSQL("DELETE FROM pc_turns WHERE account_id=? AND device_id=? AND " +
+                "request_id NOT IN (SELECT request_id FROM pc_turns " +
+                "WHERE account_id=? AND device_id=? " +
+                "ORDER BY created_at DESC,request_id DESC LIMIT 200)",
+                arrayOf(account,device,account,device))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    fun clearPcMirror(account: String, device: String) {
+        writableDatabase.delete("pc_turns","account_id=? AND device_id=?",
+            arrayOf(account,device))
     }
 
     fun history(account: String): List<ChatLine> {
