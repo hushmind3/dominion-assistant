@@ -275,117 +275,198 @@ private fun LoginScreen(vm: MainViewModel, open: (String) -> Unit) {
 }
 
 @Composable
-private fun ChatTabs(vm: MainViewModel, voice: NativeVoice) {
-    var pcMode by rememberSaveable { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !pcMode, onClick = { pcMode = false },
-                label = { Text("AI 대화") })
-            FilterChip(selected = pcMode, onClick = {
-                pcMode = true
-                vm.refreshPcs()
-                val pc = vm.pcs.firstOrNull { it.id == vm.selectedPcId && it.online }
-                    ?: vm.pcs.firstOrNull { it.online }
-                if (pc != null) vm.refreshPcWork(pc)
-            }, label = { Text("PC 업무·대화") })
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (pcMode) PcChatScreen(vm) else ChatScreen(vm, voice)
-        }
-    }
-}
-
-@Composable
-private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
+private fun ChatScreen(
+    vm: MainViewModel,
+    voice: NativeVoice,
+    onNavigate: (Int) -> Unit,
+    inVoiceSheet: Boolean = false
+) {
     val context = LocalContext.current
-    val livePhase by VoiceCallState.state.collectAsState()
-    val liveActive = livePhase.phase in setOf("connecting","connected","reconnecting")
+    val active by VoiceCallState.state.collectAsState()
+    val calling = active.phase in setOf("connecting","connected","reconnecting")
     var draft by rememberSaveable { mutableStateOf("") }
+    var showActions by remember { mutableStateOf(false) }
+    var showModels by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
     LaunchedEffect(vm.messages.size) {
-        if (vm.messages.isNotEmpty()) list.animateScrollToItem(vm.messages.lastIndex)
+        if(vm.messages.isNotEmpty()) list.animateScrollToItem(vm.messages.lastIndex)
     }
     val microphone = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { allowed ->
-        if (allowed && !liveActive) voice.listen { heard -> vm.send(heard) {
-            if (VoiceCallState.state.value.phase == "idle") voice.speak(it)
-        } }
+    ) { granted ->
+        if(granted && !calling) voice.listen { heard ->
+            vm.send(heard) { response ->
+                if(VoiceCallState.state.value.phase=="idle") voice.speak(response)
+            }
+        }
     }
-    Column(Modifier.fillMaxSize()) {
-        if (vm.models.isNotEmpty()) {
-            LazyRow(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val dictate: () -> Unit = {
+        if(voice.listening) voice.stopListening()
+        else if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)
+            ==PackageManager.PERMISSION_GRANTED) {
+            voice.listen { heard ->
+                vm.send(heard) { response ->
+                    if(VoiceCallState.state.value.phase=="idle") voice.speak(response)
+                }
+            }
+        } else microphone.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    Column(Modifier.fillMaxSize().background(Forest)) {
+        if(!inVoiceSheet) {
+            // The provider selector is deliberately hidden until requested.
+            Row(Modifier.fillMaxWidth().padding(start=14.dp,end=14.dp,top=2.dp),
+                verticalAlignment=Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick={showModels=!showModels},
+                    contentPadding=PaddingValues(horizontal=10.dp,vertical=2.dp)) {
+                    Text("모델  ·  "+vm.selectedModel.substringAfterLast('/').take(22),
+                        fontSize=11.sp,color=Secondary)
+                    Text(if(showModels)"  ⌃" else "  ⌄",fontSize=11.sp,color=Secondary)
+                }
+            }
+        }
+        if(showModels) {
+            if(vm.models.isEmpty()) {
+                Row(Modifier.padding(horizontal=18.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("모델 목록을 불러오지 못했습니다.",fontSize=12.sp,color=Secondary)
+                    TextButton(onClick=vm::refreshModels){Text("다시 불러오기")}
+                }
+            } else LazyRow(
+                contentPadding=PaddingValues(horizontal=16.dp),
+                horizontalArrangement=Arrangement.spacedBy(8.dp)
             ) {
-                items(vm.models, key = { it }) { model ->
+                items(vm.models,key={it}) { model ->
                     FilterChip(
-                        selected = vm.selectedModel == model,
-                        onClick = { vm.chooseModel(model) },
-                        label = { Text(model.substringAfterLast('/').take(24), maxLines = 1) }
+                        selected=vm.selectedModel==model,
+                        onClick={vm.chooseModel(model);showModels=false},
+                        label={Text(model.substringAfterLast('/').take(24),fontSize=12.sp)}
                     )
                 }
             }
-        } else Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("사용 가능한 모델을 조회하는 중", Modifier.weight(1f), color = Secondary)
-            TextButton(onClick = vm::refreshModels) { Text("새로고침") }
         }
         LazyColumn(
-            state = list,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            state=list,
+            modifier=Modifier.weight(1f).fillMaxWidth(),
+            contentPadding=PaddingValues(horizontal=16.dp,vertical=16.dp),
+            verticalArrangement=Arrangement.spacedBy(15.dp)
         ) {
-            if (vm.messages.isEmpty()) item {
-                Column(Modifier.fillMaxWidth().padding(top = 50.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("✦", fontSize = 44.sp, color = Accent)
-                    Text("무엇을 도와드릴까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text("대화나 질문을 시작해 보세요.", color = Secondary)
+            if(vm.messages.isEmpty()) item {
+                Column(
+                    Modifier.fillMaxWidth().padding(top=if(inVoiceSheet)15.dp else 85.dp),
+                    horizontalAlignment=Alignment.CenterHorizontally,
+                    verticalArrangement=Arrangement.spacedBy(11.dp)
+                ) {
+                    AssistantAvatarView(vm.profile,if(inVoiceSheet)54.dp else 86.dp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("무엇을 도와드릴까요?",
+                        color=Color(0xFFF2F5F0),
+                        fontSize=if(inVoiceSheet)19.sp else 26.sp,
+                        fontWeight=FontWeight.SemiBold)
+                    Text("말씀하세요. 함께 알아보고 처리할게요.",
+                        color=Secondary,fontSize=13.sp,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
             items(vm.messages) { message -> MessageBubble(message) }
         }
-        if (voice.status != "음성 대기") {
-            Text(voice.status, Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
-                color = Secondary, fontSize = 12.sp)
+        if(voice.status!="음성 대기"&&!calling) {
+            Text(voice.status,color=Secondary,fontSize=11.sp,
+                modifier=Modifier.padding(horizontal=18.dp,vertical=4.dp))
         }
-        Row(
-            Modifier.fillMaxWidth().imePadding().padding(10.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        if(vm.busy) {
+            Text("답변을 준비하고 있어요…",color=Secondary,fontSize=11.sp,
+                modifier=Modifier.padding(horizontal=18.dp,vertical=4.dp))
+        }
+        Surface(
+            color=Panel,shape=RoundedCornerShape(28.dp),
+            modifier=Modifier.fillMaxWidth().imePadding()
+                .padding(horizontal=12.dp,vertical=10.dp)
         ) {
-            OutlinedTextField(
-                value = draft, onValueChange = { draft = it.take(8000) },
-                modifier = Modifier.weight(1f), maxLines = 5,
-                placeholder = { Text("메시지를 입력하세요") },
-                shape = RoundedCornerShape(22.dp)
-            )
-            FilledTonalButton(
-                enabled = !liveActive,
-                onClick = {
-                    if (voice.listening) {
-                        voice.stopListening()
-                    } else if (ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED) {
-                        voice.listen { heard -> vm.send(heard) {
-                            if (VoiceCallState.state.value.phase == "idle") voice.speak(it)
-                        } }
-                    } else microphone.launch(Manifest.permission.RECORD_AUDIO)
-                },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
-            ) { Text(if (voice.listening) "■" else "🎙") }
-            Button(
-                onClick = { val text = draft; draft = ""; vm.send(text) },
-                enabled = draft.isNotBlank() && !vm.busy && vm.selectedModel.isNotBlank(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)
-            ) { Text("전송") }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal=6.dp,vertical=4.dp),
+                verticalAlignment=Alignment.Bottom,
+                horizontalArrangement=Arrangement.spacedBy(2.dp)
+            ) {
+                if(!calling) {
+                    IconButton(onClick={showActions=true},modifier=Modifier.size(44.dp)) {
+                        Text("+",color=Accent,fontSize=29.sp,fontWeight=FontWeight.Light)
+                    }
+                }
+                BasicTextField(
+                    value=draft,
+                    onValueChange={draft=it.take(8000)},
+                    modifier=Modifier.weight(1f).padding(vertical=11.dp,horizontal=8.dp),
+                    textStyle=TextStyle(color=Color(0xFFF3F7F2),fontSize=15.sp),
+                    cursorBrush=androidx.compose.ui.graphics.SolidColor(Accent),
+                    minLines=1,maxLines=4,
+                    decorationBox={input->
+                        Box {
+                            if(draft.isEmpty())
+                                Text(if(calling)"통화 중 메시지 입력" else "무엇이든 말씀하세요",
+                                    color=Color(0xFF91A598),fontSize=14.sp)
+                            input()
+                        }
+                    }
+                )
+                if(draft.isBlank()&&!calling) {
+                    IconButton(onClick=dictate,modifier=Modifier.size(44.dp)) {
+                        Text(if(voice.listening)"■" else "●",
+                            color=if(voice.listening)Color(0xFFE9B5AB) else Secondary,
+                            fontSize=18.sp)
+                    }
+                }
+                if(draft.isNotBlank()) {
+                    FilledIconButton(
+                        enabled=!vm.busy&&vm.selectedModel.isNotBlank(),
+                        onClick={
+                            val message=draft.trim()
+                            draft=""
+                            vm.send(message)
+                        },
+                        modifier=Modifier.size(42.dp),
+                        colors=IconButtonDefaults.filledIconButtonColors(
+                            containerColor=Accent,contentColor=Forest
+                        )
+                    ) {
+                        Text("↑",fontWeight=FontWeight.Bold,fontSize=24.sp)
+                    }
+                }
+            }
         }
-        if (voice.status == "답변을 읽고 있습니다") {
-            TextButton(onClick = voice::interrupt, modifier = Modifier.align(Alignment.End)) {
-                Text("읽기 중지")
+        if(voice.status=="답변을 읽고 있습니다"&&!calling)
+            TextButton(onClick=voice::interrupt,modifier=Modifier.align(Alignment.End)){
+                Text("읽기 중지",fontSize=12.sp)
+            }
+    }
+    if(showActions) {
+        ModalBottomSheet(
+            onDismissRequest={showActions=false},
+            containerColor=Color(0xFF1A2920)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=8.dp),
+                verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                Text("무엇을 해드릴까요?",modifier=Modifier.padding(start=10.dp,bottom=10.dp),
+                    fontSize=19.sp,fontWeight=FontWeight.SemiBold)
+                listOf(
+                    Triple("✦","PC에 심부름 맡기기",1),
+                    Triple("▤","사진·파일로 부탁하기",1),
+                    Triple("◷","일정·알림",1),
+                    Triple("☎","음성으로 이야기하기",2),
+                    Triple("◎","내 비서 설정",3)
+                ).forEach { (glyph,label,destination) ->
+                    Surface(onClick={
+                        showActions=false
+                        onNavigate(destination)
+                    },shape=RoundedCornerShape(14.dp),
+                        color=Color.Transparent,modifier=Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=13.dp),
+                            verticalAlignment=Alignment.CenterVertically,
+                            horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                            Text(glyph,color=Accent,fontSize=23.sp)
+                            Text(label,color=Color(0xFFEDF5ED),fontSize=15.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
             }
         }
     }
