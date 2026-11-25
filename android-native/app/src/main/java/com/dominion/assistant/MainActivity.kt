@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: ComponentActivity) {
+private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: MainActivity) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(activity.openVoiceEvent) {
         if (activity.openVoiceEvent>0) tab=2
