@@ -60,6 +60,17 @@ class NativePush(private val context: Context, private val api: CloudApi = Cloud
     context,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){
    throw IllegalStateException("알림 권한을 허용해 주세요.")
   }
+  val status=try {
+   api.get("/v1/assistant/push/status",account.token)
+  }catch(e:CloudError){
+   if(e.statusCode==404 ||
+     (e.statusCode==403&&e.message=="Permission denied or unknown route"))
+    throw IllegalStateException("Cloud 서버에 Android 알림 기능이 아직 배포되지 않았습니다.")
+   throw e
+  }
+  check(status.optBoolean("nativeReady",false)){
+   "Cloud 서버의 FCM 전송 설정이 필요합니다."
+  }
   createChannel()
   FirebaseMessaging.getInstance().isAutoInitEnabled=true
   val token=fcmToken()
