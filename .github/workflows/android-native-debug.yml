@@ -1,7 +1,13 @@
 name: Native Android debug build
-# Preview-first: APK builds require an explicit workflow dispatch after UI review.
+# Compile native changes on main; no production signing or deployment.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android-native/**'
+      - '.github/workflows/android-native-debug.yml'
 concurrency:
   group: native-android-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +34,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '9.6.0'
+      - name: Check Expo-to-Compose source UX contract
+        run: node --test android-native/tests/*.test.mjs
       - name: Compile and run native unit tests
         working-directory: android-native
         run: gradle :app:assembleDebug :app:testDebugUnitTest --no-daemon --stacktrace
