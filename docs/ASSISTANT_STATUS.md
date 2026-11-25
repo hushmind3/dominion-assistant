@@ -17,7 +17,7 @@
 - Android native build workflow: triggers on `main` Android changes and runs source UI contract checks, debug compilation and unit tests. A successful job is needed before calling these verified.
 
 ## Still incomplete, not verified
-1. Native APK compilation, real Android-device behavior, exact UI screenshot parity and provider/account integration require successful tests and hands-on checks.
+1. **Debug APK compiled and CI source/unit checks passed** at commit `b2f5089` ([Actions run](https://github.com/hushmind3/dominion-assistant/actions/runs/45590078287)); actual Android-device behavior, exact UI screenshot parity and provider/account integration still need hands-on checks.
 2. Generic third-party Android app inspection/navigation via AccessibilityService is **not implemented**; basic system intent handoffs are not cross-app automation.
 3. Autonomous multi-step tool planning, tool-result feedback/retries and a reusable durable server-side playbook executor are **not complete**.
 4. Google OAuth, Browser Run, FCM, LiveKit, PC connection and Cloud migrations require actual operator configuration and end-to-end tests, not source-only claims.
