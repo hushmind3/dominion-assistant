@@ -475,6 +475,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
             vm.refreshJobs()
             vm.refreshPcs()
             vm.refreshInbox()
+            vm.refreshWorkUi()
             delay(15000)
         }
     }
@@ -490,6 +491,12 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
             }
         }
         PcWorkPanel(vm)
+        val serverUi=vm.dynamicWorkUi
+        if(serverUi!=null){
+            if(serverUi.isEmpty()) Text("Cloud에서 사용 가능한 업무 도구가 없습니다.",
+                color=Secondary)
+            else RemoteWorkPanels(vm,serverUi,open)
+        } else {
         Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Google 조회", fontWeight = FontWeight.Bold, fontSize = 17.sp)
@@ -532,6 +539,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("내용 확인 후 업무 시작") }
             }
+        }
         }
         if (vm.jobs.isEmpty()) {
             Text("아직 등록된 업무가 없습니다.", color = Secondary,
