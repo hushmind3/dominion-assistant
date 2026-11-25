@@ -190,7 +190,7 @@ class ConversationStore(context: Context) :
                 if (!runCatching { java.util.UUID.fromString(id).toString() == id }
                         .getOrDefault(false) ||
                     intent == null || !AssistantTaskIntent.persistable(intent) ||
-                    state !in setOf("ready", "unknown")) continue
+                    state !in setOf("ready", "unknown", "submitted")) continue
                 drafts.add(PreparedErrand(id, intent, rows.getLong(3), state))
             }
         }
@@ -199,7 +199,7 @@ class ConversationStore(context: Context) :
 
     fun saveErrand(account: String, plan: PreparedErrand) {
         require(AssistantTaskIntent.persistable(plan.intent))
-        require(plan.state in setOf("ready", "unknown"))
+        require(plan.state in setOf("ready", "unknown", "submitted"))
         require(java.util.UUID.fromString(plan.id).toString() == plan.id)
         val values = ContentValues().apply {
             put("account_id", account)
@@ -213,10 +213,39 @@ class ConversationStore(context: Context) :
     }
 
     fun updateErrandState(account: String, id: String, state: String) {
-        require(state == "ready" || state == "unknown")
+        require(state in setOf("ready", "unknown", "submitted"))
         writableDatabase.update("prepared_errands",
             ContentValues().apply { put("state", state) },
             "account_id=? AND id=?", arrayOf(account, id))
+    }
+
+    /** One atomic transition prevents duplicate completion messages after app restarts. */
+    fun completeErrand(account: String, id: String, resultText: String): Boolean {
+        require(resultText.length in 1..20_000)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val taken = db.delete("prepared_errands",
+                "account_id=? AND id=? AND state='submitted'", arrayOf(account,id))
+            if (taken == 0) {
+                db.setTransactionSuccessful()
+                return false
+            }
+            val values = ContentValues().apply {
+                put("account_id", account)
+                put("role", "assistant")
+                put("content", resultText)
+                put("created_at", System.currentTimeMillis())
+            }
+            db.insertOrThrow("messages", null, values)
+            db.execSQL(
+                "DELETE FROM messages WHERE account_id=? AND id NOT IN (" +
+                    "SELECT id FROM messages WHERE account_id=? ORDER BY id DESC LIMIT 200)",
+                arrayOf(account, account)
+            )
+            db.setTransactionSuccessful()
+            return true
+        } finally { db.endTransaction() }
     }
 
     fun deleteErrand(account: String, id: String) {
