@@ -1,4 +1,4 @@
-# DOMINION Assistant — official Android native client
+# 도미니온 — Android native client
 
 This is a **standalone Android SDK + Kotlin + Jetpack Compose** application, not an Expo prebuild or a WebView. It has its own application ID (`com.dominion.assistant`) and can be installed alongside the existing `com.dominion.voice` React Native client.
 
@@ -67,8 +67,9 @@ The Cloud menu endpoint `GET /v1/assistant/work/ui` returns versioned JSON for *
 ## Native app parity work (2026-11-25)
 
 - Assistant profile: local name, voice/style instructions, language, 20 editable memory notes, 6 avatars and a compressed local JPEG photo; optional explicit PC profile sync.
-- Chat tab offers **AI conversation** and **PC work conversation** views. The latter retrieves PC task status and mirrors up to 200 turns **per account and PC** to the local SQLite database, with offline cached viewing.
+- Conversation-first home keeps the ordinary AI chat and the in-call expanded chat on the **same messages and same account-scoped saved draft**. The in-call sheet expands through 0% → 50% → 100% without ending the call. The compact `＋` menu opens errands, PC conversation/attachments, voice and settings; a secondary drawer keeps only chat/call/settings.
+- PC conversation remains available from `＋` → `PC와 대화·파일`. It retrieves PC task status and mirrors up to 200 turns **per account and PC** to the local SQLite database, with offline cached viewing. It is still a distinct PC journal, not synchronized with the general AI chat.
 - PC conversation accepts an approved document or camera photo. Cloud WebSocket RPC uses an 850KB application-enforced body limit; native attachment content is capped at 512KiB after optional on-device JPEG compression. Larger documents require PC-local transfer.
 - Local reminders use Android WorkManager, not Firebase: schedule, list and cancel, with on-device notifications and Android 13+ consent. Delivery is **inexact** under power management.
 - **Legacy Expo chat remains stored in Expo's private SQLite**, not automatically shared with the native app. PC task history is synchronized from the PC; this is not full Expo chat sync.
-- Android CI builds and unit-tests native code. This does not establish successful device-level microphone, camera, FCM or PC network operation.
+- Native APK build workflow is **manual dispatch only**. Source-only UI changes have not triggered a build. Device-level microphone, camera, FCM or PC network operation remains unverified.
