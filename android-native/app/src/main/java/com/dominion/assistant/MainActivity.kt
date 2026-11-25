@@ -466,7 +466,9 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
     LaunchedEffect(vm.account?.id) {
         while (vm.account != null) {
             vm.refreshJobs()
-            delay(12000)
+            vm.refreshPcs()
+            vm.refreshInbox()
+            delay(15000)
         }
     }
     Column(
@@ -480,6 +482,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
                 Text(if (vm.loadingJobs) "확인 중" else "새로고침")
             }
         }
+        PcWorkPanel(vm)
         Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Google 조회", fontWeight = FontWeight.Bold, fontSize = 17.sp)
