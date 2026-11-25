@@ -65,8 +65,8 @@ fun VoiceConversationSheet(
             delay(1000)
         }
     }
-    val color = Color(0xFF9CE0B0)
-    val muted = Color(0xFF9BAFA4)
+    val color = Color(0xFF9EE9D0)
+    val muted = Color(0xFFA4B5BD)
     val talking = call.phase == "connected" && call.botJoined
     val stateText = when(call.phase) {
         "connecting" -> "연결하고 있어요"
@@ -84,14 +84,14 @@ fun VoiceConversationSheet(
     }
     Column(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF0F211A), Color(0xFF0A110E)))
+            Brush.verticalGradient(listOf(Color(0xFF131C22), Color(0xFF0D1419)))
         )
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 12.dp,
             bottom = 8.dp),verticalAlignment = Alignment.CenterVertically) {
             AssistantAvatarView(profile,42.dp)
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(profile.name, color = Color(0xFFF2F7F2), fontWeight = FontWeight.SemiBold,
+                Text(profile.name, color = Color(0xFFF3F7F8), fontWeight = FontWeight.SemiBold,
                     fontSize = 18.sp, maxLines = 1)
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -130,7 +130,7 @@ fun VoiceConversationSheet(
                         Column(horizontalAlignment=Alignment.CenterHorizontally,
                             verticalArrangement=Arrangement.spacedBy(16.dp)) {
                             AssistantAvatarView(profile, if(fraction>.28f)76.dp else 112.dp)
-                            Text(stateText,color=Color(0xFFE8F2EA),fontSize=18.sp,
+                            Text(stateText,color=Color(0xFFF0F5F7),fontSize=18.sp,
                                 fontWeight=FontWeight.Medium,textAlign=TextAlign.Center)
                             Text("편하게 말씀하세요",color=muted,fontSize=13.sp)
                         }
@@ -139,7 +139,7 @@ fun VoiceConversationSheet(
                 val swipeModifier=Modifier
                     .fillMaxWidth()
                     .height(handleHeight)
-                    .background(Color(0xFF1B2C23))
+                    .background(Color(0xFF202C32))
                     .pointerInput(heightPx) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { change, dragAmount ->
@@ -157,7 +157,7 @@ fun VoiceConversationSheet(
                 Column(swipeModifier,horizontalAlignment=Alignment.CenterHorizontally,
                     verticalArrangement=Arrangement.Center) {
                     Box(Modifier.size(width=42.dp,height=4.dp)
-                        .background(Color(0xFF7A9583),RoundedCornerShape(4.dp)))
+                        .background(Color(0xFF869BA5),RoundedCornerShape(4.dp)))
                     Spacer(Modifier.height(5.dp))
                     Text(
                         if(fraction < .05f)"위로 밀어 대화 열기"
@@ -168,7 +168,7 @@ fun VoiceConversationSheet(
                 if(fraction > .01f) {
                     Surface(
                         modifier=Modifier.fillMaxWidth().height(contentHeight*fraction),
-                        color=Color(0xFF0D1511),
+                        color=Color(0xFF0F151A),
                         shape=RoundedCornerShape(topStart=18.dp,topEnd=18.dp)
                     ) {
                         chat()
@@ -187,16 +187,16 @@ private fun VoiceControl(
     Surface(onClick=action,modifier=modifier.height(62.dp),
         shape=RoundedCornerShape(18.dp),
         color=when {
-            danger -> Color(0xFF64352F)
-            selected -> Color(0xFF35513E)
-            else -> Color(0xFF20372A)
+            danger -> Color(0xFF6A3535)
+            selected -> Color(0xFF335950)
+            else -> Color(0xFF26343B)
         }
     ) {
         Column(horizontalAlignment=Alignment.CenterHorizontally,
             verticalArrangement=Arrangement.Center) {
-            Text(symbol,color=if(danger)Color(0xFFFFC4BA) else Color(0xFFF0F7F1),
+            Text(symbol,color=if(danger)Color(0xFFFFC4BA) else Color(0xFFF4F7F8),
                 fontSize=22.sp)
-            Text(label,color=if(danger)Color(0xFFFFD1C9) else Color(0xFFDAE6DD),
+            Text(label,color=if(danger)Color(0xFFFFD1C9) else Color(0xFFDDE7EA),
                 fontSize=11.sp,maxLines=1)
         }
     }
