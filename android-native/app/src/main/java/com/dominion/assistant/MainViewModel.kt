@@ -326,17 +326,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var pcHistorySequence=0
+
     fun refreshPcWork(pc:RemotePc) {
         val current=account ?: return
+        if(selectedPcId!=pc.id)pcTurns=emptyList()
         selectedPcId=pc.id
-        if(!pc.online) { pcTurns=emptyList();return }
+        val sequence=++pcHistorySequence
         viewModelScope.launch {
             try {
-                val result=repository.pcHistory(current,pc)
-                if(account?.id==current.id&&selectedPcId==pc.id)pcTurns=result
+                val cached=withContext(Dispatchers.IO) {
+                    history.pcHistory(current.id,pc.id)
+                }
+                if(account?.id==current.id&&selectedPcId==pc.id&&sequence==pcHistorySequence)
+                    pcTurns=cached
+                if(!pc.online)return@launch
+                val latest=repository.pcHistory(current,pc)
+                withContext(Dispatchers.IO) {
+                    history.mirrorPcHistory(current.id,pc.id,latest)
+                }
+                val mirrored=withContext(Dispatchers.IO) {
+                    history.pcHistory(current.id,pc.id)
+                }
+                if(account?.id==current.id&&selectedPcId==pc.id&&sequence==pcHistorySequence)
+                    pcTurns=mirrored
             }catch(e:Exception){
-                error=e.message?:"PC 업무 기록을 확인하지 못했습니다."
+                // Cache stays accessible when PC is disconnected.
+                if(account?.id==current.id&&selectedPcId==pc.id&&sequence==pcHistorySequence)
+                    error=e.message?:"PC 최신 상태 조회에 실패했습니다."
             }
+        }
+    }
+
+    fun clearPcCache(pc:RemotePc) {
+        val current=account ?:return
+        val seq=++pcHistorySequence
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { history.clearPcMirror(current.id,pc.id) }
+            if(account?.id==current.id&&selectedPcId==pc.id&&seq==pcHistorySequence)
+                pcTurns=emptyList()
         }
     }
 
