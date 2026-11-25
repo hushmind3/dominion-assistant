@@ -291,6 +291,7 @@ private fun LoginScreen(vm: MainViewModel, open: (String) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatScreen(
     vm: MainViewModel,
