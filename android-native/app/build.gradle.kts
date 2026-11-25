@@ -2,6 +2,9 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+// Firebase configuration is optional during native development.
+// A production Firebase project must register package com.dominion.assistant.
+if (file("google-services.json").isFile) apply(plugin = "com.google.gms.google-services")
 android {
     namespace = "com.dominion.assistant"
     compileSdk = 37
@@ -30,5 +33,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("io.livekit:livekit-android:2.31.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     testImplementation("junit:junit:4.13.2")
 }
