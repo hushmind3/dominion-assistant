@@ -99,12 +99,12 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
             ) {
                 Box(Modifier.size(38.dp).background(Panel, CircleShape),
                     contentAlignment = Alignment.Center) {
-                    Text("✦", color = Accent, fontSize = 26.sp)
+                    Text(avatarGlyph(vm.profile.avatar), color = Accent, fontSize = 26.sp)
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("DOMINION Assistant", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                    Text(if (vm.account == null) "네이티브 개인 AI" else "Cloud 연결됨",
+                    Text(if (vm.account == null) "네이티브 개인 AI" else vm.profile.name + " · Cloud 연결",
                         color = Secondary, fontSize = 12.sp)
                 }
                 if (vm.busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -643,6 +643,7 @@ private fun SettingsScreen(
         Text("설정", fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("계정 · " + (vm.account?.id?.take(18) ?: ""),
             color = Secondary, fontSize = 13.sp)
+        ProfileEditor(vm)
         Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
             Column(Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
