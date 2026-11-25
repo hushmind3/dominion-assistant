@@ -41,8 +41,21 @@ class CloudApi {
                 }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                val raw = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() } ?: "{}"
-                if (raw.length > 2_000_000) throw CloudError(502, "Cloud response is too large")
+                // PDF retrieval returns up to 2 MiB binary as base64 JSON.
+                val maxChars = if (path == "/v1/assistant/browser/document")
+                    3_200_000 else 2_000_000
+                val raw = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { reader ->
+                    val buffer = CharArray(8192)
+                    val result = StringBuilder()
+                    while (true) {
+                        val count = reader.read(buffer)
+                        if (count < 0) break
+                        if (result.length + count > maxChars)
+                            throw CloudError(502, "Cloud response is too large")
+                        result.append(buffer, 0, count)
+                    }
+                    result.toString()
+                } ?: "{}"
                 val data = try { JSONObject(raw) } catch (_: Exception) {
                     throw CloudError(502, "Cloud returned invalid JSON")
                 }
