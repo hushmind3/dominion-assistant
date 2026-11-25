@@ -24,11 +24,17 @@ data class MailAlert(val id:String,val from:String,val subject:String,
 data class SearchSource(val title:String,val url:String,val description:String,
                         val date:String)
 
+data class BrowserDocument(
+    val id: String, val name: String, val kind: String,
+    val size: Int, val sha256: String, val expiresAt: Long
+)
+
 data class WorkItem(
     val id: String, val kind: String, val status: String,
     val title: String, val detail: String, val updatedAt: Long,
     val approvalId: String? = null, val approvalLabel: String? = null,
-    val approvalPreview: String? = null
+    val approvalPreview: String? = null,
+    val documents: List<BrowserDocument> = emptyList()
 )
 class AssistantRepository(private val api: CloudApi = CloudApi()) {
     private fun obj(vararg pairs: Pair<String, Any?>): JSONObject = JSONObject().apply {
@@ -337,11 +343,31 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
             result?.optString("summary").orEmpty().ifBlank { "완료됨" }
         } else data.optString("message").ifBlank { data.optString("error") }
         val approval = data.optJSONObject("approval")
+        val docs = mutableListOf<BrowserDocument>()
+        if (kind == "browser") {
+            val records = data.optJSONArray("documents") ?: JSONArray()
+            for (i in 0 until minOf(records.length(), 2)) {
+                val d = records.optJSONObject(i) ?: continue
+                val docId = d.optString("id")
+                val sha = d.optString("sha256")
+                val kindLabel = d.optString("kind")
+                val name = d.optString("name")
+                val size = d.optInt("size")
+                val expires = d.optLong("expiresAt")
+                if (!Regex("^[a-zA-Z0-9_-]{8,80}$").matches(docId) ||
+                    !Regex("^[a-f0-9]{64}$").matches(sha) ||
+                    kindLabel !in setOf("original","page") ||
+                    d.optString("mime") != "application/pdf" ||
+                    name.length !in 1..120 || size !in 8..2*1024*1024 ||
+                    expires <= 0) continue
+                docs.add(BrowserDocument(docId,name,kindLabel,size,sha,expires))
+            }
+        }
         return WorkItem(id, kind, status, title, details.take(600), updatedAt,
             approval?.optString("id")?.takeIf {
                 Regex("^[a-zA-Z0-9_-]{8,80}$").matches(it)
             }, approval?.optString("label")?.take(140),
-            approval?.optString("preview")?.take(900))
+            approval?.optString("preview")?.take(900), docs)
     }
 
     suspend fun googleConnect(account: Account): String {
@@ -383,6 +409,33 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
                     "base64" to android.util.Base64.encodeToString(
                         content, android.util.Base64.NO_WRAP))),
             account.token)
+    }
+
+    suspend fun browserDocument(account: Account, item: WorkItem, doc: BrowserDocument): ByteArray {
+        require(item.kind == "browser" && item.documents.any { it.id == doc.id })
+        require(doc.expiresAt > System.currentTimeMillis()) { "문서 보관 기간이 지났습니다." }
+        val result = api.post("/v1/assistant/browser/document",
+            obj("id" to item.id, "documentId" to doc.id), account.token)
+        require(result.optString("id") == doc.id &&
+            result.optString("sha256") == doc.sha256 &&
+            result.optInt("size") == doc.size &&
+            result.optString("mime") == "application/pdf") {
+            "문서 정보가 일치하지 않습니다."
+        }
+        val encoded = result.optString("base64")
+        require(encoded.length in 1..(Math.ceil(2*1024*1024/3.0).toInt()*4) &&
+            Regex("^[A-Za-z0-9+/]+={0,2}$").matches(encoded)) {
+            "문서 데이터 크기나 형식을 확인해 주세요."
+        }
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
+        require(bytes.size == doc.size &&
+            bytes.copyOfRange(0,5).toString(Charsets.US_ASCII) == "%PDF-") {
+            "실제 PDF 파일과 크기가 일치하지 않습니다."
+        }
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        require(fingerprint == doc.sha256) { "PDF 원본 검증에 실패했습니다." }
+        return bytes
     }
 
     suspend fun workUi(account:Account):List<WorkSection>? {
