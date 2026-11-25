@@ -19,6 +19,7 @@ import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
 import com.dominion.assistant.data.InboxMessage
+import com.dominion.assistant.data.WorkSection
 import com.dominion.assistant.push.NativePush
 import com.dominion.assistant.voice.VoicePairing
 import com.dominion.assistant.voice.voiceId
@@ -75,6 +76,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var pushBusy by mutableStateOf(false)
         private set
+    var dynamicWorkUi by mutableStateOf<List<WorkSection>?>(null)
+        private set
 
     init {
         viewModelScope.launch {
@@ -112,6 +115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshJobs()
         refreshPcs()
         refreshInbox()
+        refreshWorkUi()
     }
 
     fun clearError() { error = "" }
@@ -155,6 +159,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pcTurns = emptyList()
         inbox = emptyList()
         selectedPcId = ""
+        dynamicWorkUi = null
         models = emptyList()
         selectedModel = ""
         error = ""
@@ -215,6 +220,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 error = "답변을 완료하지 못했습니다: " + (e.message ?: "네트워크 오류")
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    fun refreshWorkUi() {
+        val current=account?:return
+        viewModelScope.launch {
+            try {
+                val result=repository.workUi(current)
+                if(account?.id==current.id) dynamicWorkUi=result
+            }catch(_:Exception) {
+                // Static, locally compiled menus remain available when offline.
+                if(account?.id==current.id)dynamicWorkUi=null
             }
         }
     }
