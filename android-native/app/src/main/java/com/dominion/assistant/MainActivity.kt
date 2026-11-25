@@ -381,7 +381,8 @@ private fun ChatScreen(
                     draft=errand,busy=vm.sendingErrandId!=null,
                     onStart={vm.approveErrand(errand.id)},
                     onCheck={vm.checkErrand(errand.id)},
-                    onClose={vm.dismissErrand(errand.id)}
+                    onClose={vm.dismissErrand(errand.id)},
+                    onShow={if(calling)showWorkSheet=true else onNavigate(1)}
                 )
             }
             val activeJobs=vm.jobs.filter {
@@ -494,15 +495,14 @@ private fun ChatScreen(
                     Triple("☎","통화",2),
                     Triple("◇","모델 바꾸기",-1),
                     Triple("◎","설정",3)
-                ).forEach { (glyph,label,destination) ->
+                ).filter { !calling || it.third !in setOf(2,3) }
+                    .forEach { (glyph,label,destination) ->
                     Surface(onClick={
                         showActions=false
                         when {
                             destination == -1 -> showModels = true
                             calling && destination == 1 -> showWorkSheet = true
                             calling && destination == 4 -> showPcSheet = true
-                            calling && destination == 2 -> Unit
-                            calling && destination == 3 -> Unit
                             else -> onNavigate(destination)
                         }
                     },shape=RoundedCornerShape(14.dp),
@@ -693,7 +693,8 @@ private fun PreparedErrandBubble(
     busy: Boolean,
     onStart: () -> Unit,
     onCheck: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onShow: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Bottom) {
         Box(Modifier.size(28.dp).background(Color(0xFF26383E),CircleShape),
@@ -710,16 +711,23 @@ private fun PreparedErrandBubble(
                 Text(draft.summary,color=Secondary,fontSize=13.sp,
                     lineHeight=19.sp,maxLines=8)
                 if (draft.state == "unknown")
-                    Text("접수가 됐는지 확인하고 있어요. 자동으로 다시 보내지 않아요.",
+                    Text("접수 여부를 확인하고 있어요. 자동으로 다시 보내지 않아요.",
                         color=Color(0xFFF1C49F),fontSize=12.sp)
+                if (draft.state == "submitted")
+                    Text("처리 중이에요. 끝나면 결과가 대화창에 나타납니다.",
+                        color=Secondary,fontSize=12.sp)
                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp),
                     verticalAlignment=Alignment.CenterVertically) {
-                    Button(
-                        onClick=if(draft.state=="unknown")onCheck else onStart,
-                        enabled=!busy,
-                        contentPadding=PaddingValues(horizontal=15.dp,vertical=8.dp)
-                    ) { Text(if(draft.state=="unknown")"접수 확인" else "부탁하기") }
-                    TextButton(onClick=onClose,enabled=!busy) { Text("닫기") }
+                    if(draft.state == "submitted") {
+                        TextButton(onClick=onShow) { Text("진행 보기") }
+                    } else {
+                        Button(
+                            onClick=if(draft.state=="unknown")onCheck else onStart,
+                            enabled=!busy,
+                            contentPadding=PaddingValues(horizontal=15.dp,vertical=8.dp)
+                        ) { Text(if(draft.state=="unknown")"접수 확인" else "부탁하기") }
+                        TextButton(onClick=onClose,enabled=!busy) { Text("닫기") }
+                    }
                 }
             }
         }
