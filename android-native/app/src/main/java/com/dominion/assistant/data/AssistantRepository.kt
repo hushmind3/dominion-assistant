@@ -113,6 +113,14 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
         CloudRelay().request(account,pc.id,"cancel",obj("requestId" to requestId))
     }
 
+    suspend fun syncPcProfile(account: Account, pc: RemotePc, profile: AssistantProfile): AssistantProfile {
+        require(pc.online) { "PC가 오프라인입니다." }
+        val response = CloudRelay().request(account, pc.id, "profile", profile.validated().pcJson())
+        // PC returns validated profile; icon remains local to this Android device.
+        val checked = AssistantProfile.fromJson(response)
+        return checked.copy(avatar = profile.avatar)
+    }
+
     suspend fun inbox(account:Account):List<InboxMessage> {
         val rows=api.get("/v1/assistant/messages",account.token)
             .optJSONArray("messages") ?: JSONArray()
@@ -149,11 +157,12 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
         return result.distinct().take(24)
     }
 
-    suspend fun reply(account: Account, model: String, lines: List<ChatLine>): String {
+    suspend fun reply(account: Account, model: String, lines: List<ChatLine>,
+                      profile: AssistantProfile): String {
         require(model.isNotBlank() && model.length <= 150)
         val entries = JSONArray()
         entries.put(obj("role" to "system", "content" to
-            "당신은 DOMINION 개인 AI 비서입니다. 실제 수행하지 않은 작업은 했다고 말하지 마세요."))
+            PersonaPrompt.system(profile, lines.lastOrNull { it.role == "user" }?.text.orEmpty())))
         for (line in lines.takeLast(18)) {
             if (line.role == "user" || line.role == "assistant") {
                 entries.put(obj("role" to line.role, "content" to line.text.take(8000)))
