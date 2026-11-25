@@ -49,7 +49,7 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
         )
         val response = api.post(
             "/v1/apps/start",
-            obj("app_name" to "DOMINION Assistant", "token_hash" to hash,
+            obj("app_name" to "도미니온", "token_hash" to hash,
                 "capability" to "assistant_remote")
         )
         val url = response.getString("verification_uri")
