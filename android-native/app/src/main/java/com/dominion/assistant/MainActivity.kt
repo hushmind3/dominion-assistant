@@ -39,6 +39,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.dominion.assistant.data.ChatLine
 import com.dominion.assistant.data.PreparedErrand
+import com.dominion.assistant.data.BrowserDocument
 import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.voice.NativeVoice
@@ -772,6 +773,7 @@ private fun MessageBubble(message: ChatLine, profile: AssistantProfile) {
 
 @Composable
 private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
+    val context = LocalContext.current
     var uploadTarget by remember { mutableStateOf<WorkItem?>(null) }
     val chooseFile = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -863,6 +865,16 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
                 onChooseFile = { job ->
                     uploadTarget = job
                     chooseFile.launch(arrayOf("application/pdf", "image/jpeg", "image/png"))
+                },
+                onDocument = { job, document ->
+                    vm.shareWorkDocument(job, document) { uri ->
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(send, "PDF 저장 또는 공유"))
+                    }
                 }
             )
         }
@@ -874,7 +886,8 @@ private fun WorkCard(
     job: WorkItem,
     cancel: (WorkItem) -> Unit,
     onAction: (WorkItem, String) -> Unit,
-    onChooseFile: (WorkItem) -> Unit
+    onChooseFile: (WorkItem) -> Unit,
+    onDocument: (WorkItem, BrowserDocument) -> Unit
 ) {
     val terminal = job.status in setOf("completed", "failed", "cancelled", "needs_review")
     var confirmApproval by remember(job.id, job.approvalId) { mutableStateOf(false) }
@@ -891,6 +904,13 @@ private fun WorkCard(
             }
             if (job.detail.isNotBlank()) Text(job.detail, fontSize = 13.sp,
                 color = Secondary, maxLines = 7)
+            job.documents.forEach { document ->
+                OutlinedButton(
+                    enabled = document.expiresAt > System.currentTimeMillis(),
+                    onClick = { onDocument(job,document) }
+                ) { Text(if(document.kind == "original") "📄 원본 PDF 저장·공유"
+                        else "📄 화면 PDF 저장·공유 (공식 원본 아님)") }
+            }
             if (job.kind == "browser") {
                 when (job.status) {
                     "awaiting_approval" -> if (job.approvalId != null) {
