@@ -360,17 +360,25 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
                     color = Accent, fontSize = 26.sp
                 )
                 if (state.phase in setOf("connected","connecting","reconnecting")) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedButton(onClick = {
                             VoiceCallService.command(activity, VoiceCallService.MUTE)
-                        }) { Text(if (state.muted) "마이크 켜기" else "음소거") }
+                        },modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal=4.dp,vertical=12.dp)) {
+                            Text(if (state.muted) "마이크 켜기" else "음소거",fontSize=12.sp,maxLines=1)
+                        }
                         OutlinedButton(onClick = {
                             VoiceCallService.command(activity, VoiceCallService.SPEAKER)
-                        }) { Text(if (state.speakerForced) "자동 출력" else "스피커") }
+                        },modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal=4.dp,vertical=12.dp)) {
+                            Text(if (state.speakerForced) "자동 출력" else "스피커",fontSize=12.sp,maxLines=1)
+                        }
                         Button(onClick = {
                             VoiceCallService.command(activity, VoiceCallService.STOP)
-                        }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB64D40))) {
-                            Text("통화 종료", color = Color.White)
+                        },modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal=4.dp,vertical=12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB64D40))) {
+                            Text("통화 종료", color = Color.White,fontSize=12.sp,maxLines=1)
                         }
                     }
                     Text("화면을 꺼도 통화는 유지됩니다. 알림에서 음소거와 종료를 누를 수 있습니다.",
