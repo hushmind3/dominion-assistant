@@ -16,6 +16,9 @@ import com.dominion.assistant.data.ChatLine
 import com.dominion.assistant.data.CloudError
 import com.dominion.assistant.data.ConversationStore
 import com.dominion.assistant.data.AssistantProfile
+import com.dominion.assistant.data.AssistantIntent
+import com.dominion.assistant.data.AssistantTaskIntent
+import com.dominion.assistant.data.PreparedErrand
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
@@ -88,6 +91,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var jobs by mutableStateOf<List<WorkItem>>(emptyList())
         private set
+    var pendingErrands by mutableStateOf<List<PreparedErrand>>(emptyList())
+        private set
+    var sendingErrandId by mutableStateOf<String?>(null)
+        private set
     var pcs by mutableStateOf<List<RemotePc>>(emptyList())
         private set
     var voiceBusy by mutableStateOf(false)
@@ -123,19 +130,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         // Keep the valid encrypted token and local journal during network outages.
                         val restored = withContext(Dispatchers.IO) {
-                            history.readProfile(previous.id) to history.history(previous.id)
+                            Triple(history.readProfile(previous.id), history.history(previous.id),
+                                history.errands(previous.id))
                         }
                         profile = restored.first
                         messages = restored.second
+                        pendingErrands = restored.third
                         account = previous
                         error = "Cloud 연결을 확인해 주세요."
                     }
                 } catch (_: Exception) {
                     val restored = withContext(Dispatchers.IO) {
-                            history.readProfile(previous.id) to history.history(previous.id)
+                            Triple(history.readProfile(previous.id), history.history(previous.id),
+                                history.errands(previous.id))
                         }
                         profile = restored.first
                         messages = restored.second
+                        pendingErrands = restored.third
                         account = previous
                     error = "네트워크 연결을 확인해 주세요."
                 }
@@ -148,10 +159,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val restoredProfile = history.readProfile(value.id)
             val restoredMessages = history.history(value.id)
             vault.save(value)
-            restoredProfile to restoredMessages
+            Triple(restoredProfile, restoredMessages, history.errands(value.id))
         }
         profile = saved.first
         messages = saved.second
+        pendingErrands = saved.third
         account = value
         refreshPushStatus()
         error = ""
@@ -199,6 +211,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val hadCall=VoiceCallState.state.value.phase in setOf("connecting","connected","reconnecting")
         account = null
         messages = emptyList()
+        pendingErrands = emptyList()
+        sendingErrandId = null
         profile = AssistantProfile()
         reminders = emptyList()
         mailStatus = MailStatus()
