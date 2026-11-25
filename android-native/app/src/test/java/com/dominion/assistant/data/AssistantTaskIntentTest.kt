@@ -31,6 +31,17 @@ class AssistantTaskIntentTest {
         assertNull(AssistantTaskIntent.parse("""{"action":"web_search","query":" "}"""))
     }
 
+    @Test fun mailWatchRemainsAProposalWithValidatedFilters() {
+        val proposed = """{"action":"mail_watch","mode":"matched","sender":"example@domain.test","keyword":"계약"}"""
+        val parsed = AssistantTaskIntent.parse(proposed)
+        assertTrue(parsed is AssistantIntent.MailWatch)
+        assertTrue(AssistantTaskIntent.persistable(parsed!!))
+        assertEquals(parsed, AssistantTaskIntent.parse(AssistantTaskIntent.encode(parsed)))
+        assertNull(AssistantTaskIntent.parse("""{"action":"mail_watch","mode":"matched","sender":"","keyword":""}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"mail_watch","mode":"delete","sender":"","keyword":""}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"mail_watch","mode":"all","sender":"","keyword":"","confirmed":true}"""))
+    }
+
     @Test fun harmlessChatNeverBecomesAnAction() {
         assertNull(AssistantTaskIntent.parse("오늘 날씨가 궁금하시군요."))
         assertNull(AssistantTaskIntent.parse("비서가 신청을 완료했습니다."))
