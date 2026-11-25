@@ -840,7 +840,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             "failed" -> "⚠️ 심부름 실패: " + outcome.title
                             "cancelled" -> "심부름 취소: " + outcome.title
                             else -> "확인이 필요한 심부름: " + outcome.title
-                        } + if(outcome.detail.isBlank()) "" else "\n" + outcome.detail.take(800)
+                        } + buildString {
+                            if(outcome.detail.isNotBlank()) append("\n").append(outcome.detail.take(600))
+                            if(outcome.evidence != null) append("\n확인된 화면: ")
+                                .append(outcome.evidence.take(350))
+                            if(outcome.resultUrl != null) append("\n출처: ")
+                                .append(outcome.resultUrl)
+                            if(outcome.documents.isNotEmpty()) append("\n📄 PDF는 대화창에서 받을 수 있어요.")
+                        }
                         val recorded = withContext(Dispatchers.IO) {
                             history.completeErrand(current.id, draft.id, note)
                         }
