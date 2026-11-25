@@ -36,6 +36,10 @@ import androidx.lifecycle.ViewModelProvider
 import com.dominion.assistant.data.ChatLine
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.voice.NativeVoice
+import com.dominion.assistant.voice.VoiceCallService
+import com.dominion.assistant.voice.VoiceCallState
+import com.dominion.assistant.data.RemotePc
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.delay
 
 private val Forest = Color(0xFF14261D)
@@ -89,7 +93,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
         bottomBar = {
             if (vm.account != null) {
                 NavigationBar(containerColor = Panel, modifier = Modifier.navigationBarsPadding()) {
-                    listOf("대화" to "💬", "업무" to "🧭", "설정" to "⚙").forEachIndexed { i, item ->
+                    listOf("대화" to "💬", "업무" to "🧭", "통화" to "🎙", "설정" to "⚙").forEachIndexed { i, item ->
                         NavigationBarItem(
                             selected = tab == i, onClick = { tab = i },
                             icon = { Text(item.second, fontSize = 20.sp) },
@@ -120,6 +124,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
                     1 -> WorkScreen(vm, open = { url ->
                         activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     })
+                    2 -> CallScreen(vm, activity)
                     else -> SettingsScreen(vm,
                         onAssistantSettings = {
                             try {
@@ -259,6 +264,127 @@ private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
         if (voice.status == "답변을 읽고 있습니다") {
             TextButton(onClick = voice::interrupt, modifier = Modifier.align(Alignment.End)) {
                 Text("읽기 중지")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallScreen(vm: MainViewModel, activity: ComponentActivity) {
+    val state by VoiceCallState.state.collectAsState()
+    var requestPc by remember { mutableStateOf<RemotePc?>(null) }
+    var seconds by remember(state.startedAt) { mutableIntStateOf(0) }
+    LaunchedEffect(state.startedAt) {
+        if (state.startedAt > 0) while (true) {
+            seconds = ((System.currentTimeMillis() - state.startedAt) / 1000).toInt().coerceAtLeast(0)
+            delay(1000)
+        }
+    }
+    LaunchedEffect(vm.account?.id) {
+        while (vm.account != null) {
+            vm.refreshPcs()
+            delay(15_000)
+        }
+    }
+    val launchCall: (RemotePc) -> Unit = { pc ->
+        vm.startVoice(pc) { pairing, selected, id ->
+            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) false
+            else runCatching {
+                VoiceCallService.start(activity, pairing, selected.id, id)
+                true
+            }.getOrDefault(false)
+        }
+    }
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) requestPc?.let(launchCall)
+        requestPc = null
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(17.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("AI 비서와 통화", fontWeight = FontWeight.Bold, fontSize = 23.sp,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = vm::refreshPcs) { Text("PC 새로고침") }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(92.dp).background(Color(0xFF355C43), CircleShape),
+                    contentAlignment = Alignment.Center) {
+                    Text("✦", color = Accent, fontSize = 62.sp)
+                }
+                Text(
+                    when (state.phase) {
+                        "connected" -> if (state.botJoined) "AI와 연결됨" else "AI 입장 대기 중"
+                        "connecting" -> "연결 중"
+                        "reconnecting" -> "다시 연결 중"
+                        "error" -> "연결 오류"
+                        else -> "음성 통화 대기"
+                    },
+                    fontWeight = FontWeight.Bold, fontSize = 20.sp
+                )
+                if (state.message.isNotBlank()) Text(state.message, color = Secondary)
+                if (state.startedAt > 0) Text(
+                    "%02d:%02d".format(seconds / 60, seconds % 60),
+                    color = Accent, fontSize = 26.sp
+                )
+                if (state.phase in setOf("connected","connecting","reconnecting")) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = {
+                            VoiceCallService.command(activity, VoiceCallService.MUTE)
+                        }) { Text(if (state.muted) "마이크 켜기" else "음소거") }
+                        Button(onClick = {
+                            VoiceCallService.command(activity, VoiceCallService.STOP)
+                        }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB64D40))) {
+                            Text("통화 종료", color = Color.White)
+                        }
+                    }
+                    Text("화면을 꺼도 통화는 유지됩니다. 알림에서 음소거와 종료를 누를 수 있습니다.",
+                        fontSize = 12.sp, color = Secondary)
+                }
+            }
+        }
+        if (state.phase !in setOf("connected","connecting","reconnecting")) {
+            Text("연결 가능한 내 PC", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text("PC에서 음성 비서를 설정하고 온라인으로 연결해야 합니다. 통화에 설정한 음성 API 비용이 발생할 수 있습니다.",
+                color = Secondary, fontSize = 12.sp, lineHeight = 19.sp)
+            if (vm.pcs.isEmpty()) Text("연결된 PC가 없습니다.", color = Secondary)
+            vm.pcs.forEach { pc ->
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Row(Modifier.fillMaxWidth().padding(15.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(pc.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(if (pc.online) "온라인" else "오프라인",
+                                color = Secondary, fontSize = 12.sp)
+                        }
+                        Button(
+                            enabled = pc.online && !vm.voiceBusy,
+                            onClick = {
+                                if (ContextCompat.checkSelfPermission(activity,
+                                        Manifest.permission.RECORD_AUDIO) ==
+                                    PackageManager.PERMISSION_GRANTED) launchCall(pc)
+                                else {
+                                    requestPc = pc
+                                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        ) { Text("전화 걸기") }
+                    }
+                }
+            }
+            if (vm.voiceBusy) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("PC에서 음성 연결을 준비하는 중…", color = Secondary)
+                }
             }
         }
     }
