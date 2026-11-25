@@ -77,10 +77,10 @@ fun AssistantAvatarView(profile:AssistantProfile,size:Dp,modifier:Modifier=Modif
             BitmapFactory.decodeByteArray(bytes,0,bytes.size)?.asImageBitmap()
         }.getOrNull()
     }
-    Box(modifier.size(size).clip(CircleShape).background(Color(0xFF304D3A)),
+    Box(modifier.size(size).clip(CircleShape).background(Color(0xFF26383E)),
         contentAlignment=Alignment.Center) {
         if(bitmap!=null)Image(bitmap,contentDescription=profile.name+" 사진",
             contentScale=ContentScale.Crop,modifier=Modifier.size(size))
-        else Text(avatarGlyph(profile.avatar),color=Color(0xFFB5E4BE),fontSize=(size.value*.53f).sp)
+        else Text(avatarGlyph(profile.avatar),color=Color(0xFF9EE9D0),fontSize=(size.value*.53f).sp)
     }
 }
