@@ -2,6 +2,9 @@ package com.dominion.assistant
 
 import android.app.Application
 import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import androidx.core.content.FileProvider
 import android.provider.OpenableColumns
 import java.io.ByteArrayOutputStream
 import androidx.compose.runtime.getValue
@@ -19,6 +22,7 @@ import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.AssistantIntent
 import com.dominion.assistant.data.AssistantTaskIntent
 import com.dominion.assistant.data.PreparedErrand
+import com.dominion.assistant.data.BrowserDocument
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
@@ -94,6 +98,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var pendingErrands by mutableStateOf<List<PreparedErrand>>(emptyList())
         private set
     var sendingErrandId by mutableStateOf<String?>(null)
+        private set
+    var sharingDocumentId by mutableStateOf<String?>(null)
         private set
     var pcs by mutableStateOf<List<RemotePc>>(emptyList())
         private set
@@ -941,6 +947,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 refreshJobs()
             } catch (e: Exception) {
                 error = e.message ?: "파일을 전송하지 못했습니다."
+            }
+        }
+    }
+
+    fun shareWorkDocument(item: WorkItem, document: BrowserDocument, onReady: (Uri) -> Unit) {
+        val current = account ?: return
+        if (sharingDocumentId != null) return
+        if (item.kind != "browser" || item.documents.none { it.id == document.id }) return
+        sharingDocumentId = document.id
+        viewModelScope.launch {
+            try {
+                val bytes = repository.browserDocument(current, item, document)
+                if(account?.id != current.id)return@launch
+                val uri = withContext(Dispatchers.IO) {
+                    val app = getApplication<Application>()
+                    val dir = File(app.cacheDir, "dominion-documents")
+                    require(dir.isDirectory || dir.mkdirs()) { "PDF 저장 공간을 만들지 못했습니다." }
+                    val old = System.currentTimeMillis() - 86400000
+                    dir.listFiles()?.filter { it.lastModified() < old }?.forEach { it.delete() }
+                    val file = File(dir, java.util.UUID.randomUUID().toString() + ".pdf")
+                    FileOutputStream(file).use { it.write(bytes) }
+                    FileProvider.getUriForFile(app, app.packageName + ".fileprovider", file)
+                }
+                if(account?.id == current.id)onReady(uri)
+            } catch (e: Exception) {
+                if(account?.id == current.id)error = "PDF 저장 실패: " +
+                    (e.message ?: "파일을 확인하지 못했습니다.")
+            } finally {
+                if(sharingDocumentId == document.id)sharingDocumentId = null
             }
         }
     }
