@@ -10,3 +10,11 @@ mobile/dist/
 *.apk
 *.jks
 *.keystore
+
+# Official Android native build
+android-native/.gradle/
+android-native/.idea/
+android-native/.kotlin/
+android-native/local.properties
+android-native/build/
+android-native/app/build/
