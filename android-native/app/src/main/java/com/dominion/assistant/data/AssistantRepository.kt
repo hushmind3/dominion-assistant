@@ -5,9 +5,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
+import com.dominion.assistant.voice.VoicePairing
 import java.util.Base64
 
 data class Pairing(val token: String, val url: String, val expiresAt: Long)
+data class RemotePc(val id: String, val name: String, val online: Boolean)
 data class WorkItem(
     val id: String, val kind: String, val status: String,
     val title: String, val detail: String, val updatedAt: Long,
@@ -61,6 +63,30 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
 
     suspend fun logout(account: Account) {
         api.post("/v1/apps/disconnect", obj(), account.token)
+    }
+
+    suspend fun pcs(account: Account): List<RemotePc> {
+        val rows=api.get("/v1/assistant/devices", account.token)
+            .optJSONArray("devices") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { i ->
+            val row=rows.optJSONObject(i) ?: return@mapNotNull null
+            val id=row.optString("id")
+            if (!runCatching { java.util.UUID.fromString(id).toString()==id }.getOrDefault(false))
+                return@mapNotNull null
+            RemotePc(id,row.optString("name","PC").take(80),row.optBoolean("online"))
+        }.take(10)
+    }
+
+    suspend fun startVoice(account: Account, pc: RemotePc, voiceId: String): VoicePairing {
+        require(pc.online) { "PC가 오프라인입니다." }
+        val result=CloudRelay().voiceCommand(account,pc.id,"start",voiceId)
+        val data=result.optJSONObject("pairing")
+            ?: throw IllegalStateException("음성 서버 연결 정보를 받지 못했습니다.")
+        return VoicePairing.parse(data)
+    }
+
+    suspend fun stopVoice(account: Account, pc: RemotePc, voiceId: String) {
+        CloudRelay().voiceCommand(account,pc.id,"stop",voiceId)
     }
 
     suspend fun models(account: Account): List<String> {
