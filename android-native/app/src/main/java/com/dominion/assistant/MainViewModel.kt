@@ -540,9 +540,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val state=repository.mailStatus(current)
                 val alerts=repository.mailAlerts(current)
                 if(account?.id==current.id) {
+                    // The SQLite unique key makes repeated polls and push refreshes harmless.
+                    val notes=withContext(Dispatchers.IO) {
+                        history.mirrorMailAlerts(current.id,alerts)
+                    }
+                    if(account?.id!=current.id)return@launch
                     mailStatus=state
                     mailAlerts=alerts
                     mailAvailable=true
+                    if(notes.isNotEmpty())messages=messages+notes
                 }
             }catch(e:CloudError) {
                 if(account?.id==current.id && e.statusCode in setOf(404,503)) {
