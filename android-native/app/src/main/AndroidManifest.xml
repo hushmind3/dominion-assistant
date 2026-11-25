@@ -25,6 +25,13 @@
             <meta-data android:name="android.voice_interaction"
                 android:resource="@xml/voice_interaction_service" />
         </service>
+        <service android:name=".voice.DominionRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SPEECH_RECOGNIZER">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
         <service android:name=".voice.DominionVoiceSessionService"
             android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:process=":voice_session" />
