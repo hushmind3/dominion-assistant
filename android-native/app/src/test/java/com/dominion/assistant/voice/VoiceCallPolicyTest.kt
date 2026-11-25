@@ -11,11 +11,12 @@ class VoiceCallPolicyTest {
   val p=VoicePairing.validate("wss://rtc.example.com",token,room,now/1000+120,now)
   assertEquals("wss://rtc.example.com",p.url)
   assertEquals(room,p.room)
+  assertNotNull(VoicePairing.validate("wss://rtc.example.com:7880",token,room,now/1000+120,now))
  }
  @Test fun rejectsInsecureAndLocalConnection(){
   for(url in listOf("http://rtc.example.com","ws://rtc.example.com",
    "wss://localhost","wss://127.0.0.1","wss://user:pw@rtc.example.com",
-   "wss://rtc.example.com:8765")){
+   "wss://rtc.example.com?secret=invalid")){
    try { VoicePairing.validate(url,token,room,now/1000+120,now); fail(url) }
    catch(_:IllegalArgumentException){}
   }
