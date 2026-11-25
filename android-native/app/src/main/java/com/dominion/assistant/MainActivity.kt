@@ -20,6 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -82,86 +86,158 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: MainActivity) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // The conversation owns the home screen. Other functions live in a drawer.
+    var page by rememberSaveable { mutableIntStateOf(0) }
+    var showSignOut by remember { mutableStateOf(false) }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val call by VoiceCallState.state.collectAsState()
+    val inCall = call.phase in setOf("connecting","connected","reconnecting")
     LaunchedEffect(activity.openVoiceEvent) {
-        if (activity.openVoiceEvent>0) tab=2
+        if(activity.openVoiceEvent>0) page=if(inCall)0 else 2
     }
     LaunchedEffect(activity.openWorkEvent) {
-        if(activity.openWorkEvent>0) tab=1
+        if(activity.openWorkEvent>0&&!inCall)page=1
     }
-    var showSignOut by remember { mutableStateOf(false) }
-    Scaffold(
-        containerColor = Forest,
-        topBar = {
-            Row(
-                Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AssistantAvatarView(vm.profile,38.dp)
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("DOMINION Assistant", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                    Text(if (vm.account == null) "네이티브 개인 AI" else vm.profile.name + " · Cloud 연결",
-                        color = Secondary, fontSize = 12.sp)
+    LaunchedEffect(inCall) {
+        if(inCall) {
+            page=0
+            drawer.close()
+        }
+    }
+    ModalNavigationDrawer(
+        drawerState=drawer,
+        gesturesEnabled=vm.account!=null&&!inCall,
+        drawerContent={
+            if(vm.account!=null) {
+                ModalDrawerSheet(
+                    drawerContainerColor=Color(0xFF19261F),
+                    modifier=Modifier.width(292.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(start=22.dp,end=18.dp,
+                        top=28.dp,bottom=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        AssistantAvatarView(vm.profile,52.dp)
+                        Text(vm.profile.name, fontSize=21.sp,
+                            fontWeight=FontWeight.SemiBold,color=Color(0xFFF2F7F2))
+                        Text("내 곁의 비서",color=Secondary,fontSize=12.sp)
+                    }
+                    HorizontalDivider(color=Color(0xFF304338))
+                    listOf(
+                        Triple(0,"대화","◌"),
+                        Triple(1,"심부름","✦"),
+                        Triple(2,"전화 연결","☎"),
+                        Triple(3,"내 비서·설정","⚙")
+                    ).forEach { (index,label,glyph) ->
+                        NavigationDrawerItem(
+                            label={Text(label,fontSize=15.sp)},
+                            selected=page==index,
+                            icon={Text(glyph,fontSize=20.sp)},
+                            onClick={
+                                page=index
+                                scope.launch{drawer.close()}
+                            },
+                            modifier=Modifier.padding(horizontal=12.dp,vertical=3.dp),
+                            colors=NavigationDrawerItemDefaults.colors(
+                                selectedContainerColor=Color(0xFF294436),
+                                selectedTextColor=Color(0xFFD5F4DD),
+                                unselectedTextColor=Color(0xFFD7E1D9)
+                            )
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text("DOMINION · Android",modifier=Modifier.padding(22.dp),
+                        color=Color(0xFF74897B),fontSize=11.sp)
                 }
-                if (vm.busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             }
-        },
-        bottomBar = {
-            if (vm.account != null) {
-                NavigationBar(containerColor = Panel, modifier = Modifier.navigationBarsPadding()) {
-                    listOf("대화" to "💬", "업무" to "🧭", "통화" to "🎙", "설정" to "⚙").forEachIndexed { i, item ->
-                        NavigationBarItem(
-                            selected = tab == i, onClick = { tab = i },
-                            icon = { Text(item.second, fontSize = 20.sp) },
-                            label = { Text(item.first) }
+        }
+    ) {
+        Scaffold(
+            containerColor=Forest,
+            topBar={
+                if(!inCall) {
+                    Row(
+                        Modifier.fillMaxWidth().statusBarsPadding()
+                            .padding(horizontal=14.dp,vertical=9.dp),
+                        verticalAlignment=Alignment.CenterVertically,
+                        horizontalArrangement=Arrangement.spacedBy(8.dp)
+                    ) {
+                        if(vm.account!=null) {
+                            IconButton(onClick={scope.launch{drawer.open()}}) {
+                                Text("☰",fontSize=22.sp,color=Color(0xFFD9E6DC))
+                            }
+                        }
+                        AssistantAvatarView(vm.profile,36.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text("도미니온",fontWeight=FontWeight.SemiBold,
+                                fontSize=18.sp,color=Color(0xFFF2F7F2))
+                            Text(if(vm.account==null)"나의 AI 비서" else "언제든 말 걸어주세요",
+                                color=Secondary,fontSize=11.sp)
+                        }
+                        if(vm.account!=null) {
+                            IconButton(onClick={page=2}) {
+                                Text("☎",fontSize=23.sp,color=Accent)
+                            }
+                        }
+                        if(vm.busy)CircularProgressIndicator(
+                            Modifier.size(18.dp),strokeWidth=2.dp,color=Accent)
+                    }
+                    HorizontalDivider(color=Color(0xFF22332A),thickness=.5.dp)
+                }
+            }
+        ) { pad ->
+            Column(Modifier.fillMaxSize().padding(pad)) {
+                if(vm.error.isNotBlank()) {
+                    Row(Modifier.fillMaxWidth()
+                        .background(Color(0xFF51342F)).padding(horizontal=14.dp,vertical=8.dp),
+                        verticalAlignment=Alignment.CenterVertically) {
+                        Text(vm.error,Modifier.weight(1f),fontSize=12.sp,
+                            color=Color(0xFFFFD6D0))
+                        TextButton(onClick=vm::clearError){Text("닫기")}
+                    }
+                }
+                if(vm.account==null) {
+                    LoginScreen(vm){url->
+                        activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+                    }
+                } else if(inCall) {
+                    VoiceConversationSheet(
+                        profile=vm.profile,call=call,
+                        onMute={VoiceCallService.command(activity,VoiceCallService.MUTE)},
+                        onSpeaker={VoiceCallService.command(activity,VoiceCallService.SPEAKER)},
+                        onHangup={VoiceCallService.command(activity,VoiceCallService.STOP)}
+                    ) {
+                        ChatScreen(vm,voice,onNavigate={page=it},inVoiceSheet=true)
+                    }
+                } else {
+                    when(page) {
+                        0 -> ChatScreen(vm,voice,onNavigate={page=it})
+                        1 -> WorkScreen(vm,open={url->
+                            activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
+                        })
+                        2 -> CallScreen(vm,activity,voice)
+                        else -> SettingsScreen(vm,
+                            onAssistantSettings={
+                                runCatching{
+                                    activity.startActivity(Intent(
+                                        Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+                                }
+                            },
+                            onSignOut={showSignOut=true}
                         )
                     }
                 }
             }
         }
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad)) {
-            if (vm.error.isNotBlank()) {
-                Row(
-                    Modifier.fillMaxWidth().background(Color(0xFF643A34)).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(vm.error, Modifier.weight(1f), fontSize = 13.sp)
-                    TextButton(onClick = vm::clearError) { Text("닫기") }
-                }
-            }
-            if (vm.account == null) {
-                LoginScreen(vm) { url ->
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                }
-            } else {
-                when (tab) {
-                    0 -> ChatTabs(vm, voice)
-                    1 -> WorkScreen(vm, open = { url ->
-                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    })
-                    2 -> CallScreen(vm, activity, voice)
-                    else -> SettingsScreen(vm,
-                        onAssistantSettings = {
-                            try {
-                                activity.startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-                            } catch (_: Exception) {
-                                vm.clearError()
-                            }
-                        },
-                        onSignOut = { showSignOut = true }
-                    )
-                }
-            }
-        }
     }
-    if (showSignOut) AlertDialog(
-        onDismissRequest = { showSignOut = false },
-        title = { Text("계정 연결을 해제할까요?") },
-        text = { Text("이 기기의 Cloud 인증을 해제합니다. 대화 기록은 기기에 남습니다.") },
-        confirmButton = { TextButton(onClick = { showSignOut = false; vm.signOut() }) { Text("연결 해제") } },
-        dismissButton = { TextButton(onClick = { showSignOut = false }) { Text("취소") } }
+    if(showSignOut)AlertDialog(
+        onDismissRequest={showSignOut=false},
+        title={Text("계정 연결을 해제할까요?")},
+        text={Text("이 기기의 Cloud 연결만 해제합니다. 대화는 기기에 남습니다.")},
+        confirmButton={TextButton(onClick={
+            showSignOut=false
+            vm.signOut()
+        }){Text("연결 해제")}},
+        dismissButton={TextButton(onClick={showSignOut=false}){Text("취소")}}
     )
 }
 
