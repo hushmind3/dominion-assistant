@@ -1,11 +1,7 @@
 name: Native Android debug build
+# Preview-first: APK builds require an explicit workflow dispatch after UI review.
 on:
   workflow_dispatch:
-  push:
-    branches: [assistant-android-native]
-    paths:
-      - 'android-native/**'
-      - '.github/workflows/android-native-debug.yml'
 concurrency:
   group: native-android-${{ github.ref }}
   cancel-in-progress: true
