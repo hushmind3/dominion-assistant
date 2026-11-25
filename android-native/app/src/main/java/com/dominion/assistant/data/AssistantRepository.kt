@@ -290,6 +290,16 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
             account.token)
     }
 
+    suspend fun workUi(account:Account):List<WorkSection>? {
+        return try {
+            WorkUiSchema.parse(api.get("/v1/assistant/work/ui",account.token))
+        }catch(e:CloudError) {
+            if(e.statusCode==404 ||
+                (e.statusCode==403&&e.message=="Permission denied or unknown route"))null
+            else throw e
+        }
+    }
+
     suspend fun jobs(account: Account): List<WorkItem> {
         return try {
             val response = api.get("/v1/assistant/work/jobs", account.token)
