@@ -9,7 +9,7 @@ data class ChatLine(val role: String, val text: String, val createdAt: Long)
 
 /** Simple account-isolated local conversation mirror; capped to 200 turns per account. */
 class ConversationStore(context: Context) :
-    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 4) {
+    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 5) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE messages (" +
@@ -21,6 +21,7 @@ class ConversationStore(context: Context) :
         createProfiles(db)
         createPcTurns(db)
         createErrands(db)
+        createMailNotices(db)
     }
 
     private fun createProfiles(db: SQLiteDatabase) {
@@ -46,11 +47,18 @@ class ConversationStore(context: Context) :
             "ON prepared_errands(account_id,created_at)")
     }
 
+    private fun createMailNotices(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS mail_notices (" +
+            "account_id TEXT NOT NULL, alert_id TEXT NOT NULL," +
+            " created_at INTEGER NOT NULL, PRIMARY KEY(account_id, alert_id))")
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Existing conversations are never dropped or rewritten.
         if (oldVersion < 2) createProfiles(db)
         if (oldVersion < 3) createPcTurns(db)
         if (oldVersion < 4) createErrands(db)
+        if (oldVersion < 5) createMailNotices(db)
     }
 
     fun readProfile(account: String): AssistantProfile {
@@ -251,6 +259,47 @@ class ConversationStore(context: Context) :
     fun deleteErrand(account: String, id: String) {
         writableDatabase.delete("prepared_errands", "account_id=? AND id=?",
             arrayOf(account, id))
+    }
+
+    /** Mail events become conversation messages at most once per account, across restarts. */
+    fun mirrorMailAlerts(account: String, alerts: List<MailAlert>): List<ChatLine> {
+        val notes = mutableListOf<ChatLine>()
+        val recent = System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (alert in alerts.takeLast(8)) {
+                if(alert.id.length !in 1..200 || alert.time < recent) continue
+                val value = ContentValues().apply {
+                    put("account_id", account)
+                    put("alert_id", alert.id)
+                    put("created_at", alert.time)
+                }
+                val inserted = db.insertWithOnConflict("mail_notices", null,
+                    value, SQLiteDatabase.CONFLICT_IGNORE)
+                if (inserted == -1L) continue
+                val prefix = if(alert.important) "📬 중요 메일" else "📩 새 메일"
+                val text = prefix + "\n보낸 사람: " + alert.from.take(180) +
+                    "\n제목: " + alert.subject.take(220)
+                val time = System.currentTimeMillis()
+                db.insertOrThrow("messages", null, ContentValues().apply {
+                    put("account_id", account)
+                    put("role", "assistant")
+                    put("content", text)
+                    put("created_at", time)
+                })
+                notes.add(ChatLine("assistant", text, time))
+            }
+            db.execSQL(
+                "DELETE FROM messages WHERE account_id=? AND id NOT IN (" +
+                    "SELECT id FROM messages WHERE account_id=? ORDER BY id DESC LIMIT 200)",
+                arrayOf(account, account)
+            )
+            db.execSQL("DELETE FROM mail_notices WHERE account_id=? AND created_at<?",
+                arrayOf(account, System.currentTimeMillis() - 31L * 86400000))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return notes
     }
 
     fun clear(account: String) {
