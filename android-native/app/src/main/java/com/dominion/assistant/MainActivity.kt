@@ -117,7 +117,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
             } else {
                 when (tab) {
                     0 -> ChatScreen(vm, voice)
-                    1 -> WorkScreen(vm)
+                    1 -> WorkScreen(vm, open = { url ->
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    })
                     else -> SettingsScreen(vm,
                         onAssistantSettings = {
                             try {
@@ -279,7 +281,14 @@ private fun MessageBubble(message: ChatLine) {
 }
 
 @Composable
-private fun WorkScreen(vm: MainViewModel) {
+private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
+    var uploadTarget by remember { mutableStateOf<WorkItem?>(null) }
+    val chooseFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) uploadTarget?.let { vm.uploadWorkFile(it, uri) }
+        uploadTarget = null
+    }
     var site by rememberSaveable { mutableStateOf("") }
     var goal by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(vm.account?.id) {
@@ -304,6 +313,9 @@ private fun WorkScreen(vm: MainViewModel) {
                 Text("Google 조회", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text("계정에서 승인한 읽기 전용 작업만 실행합니다.",
                     fontSize = 12.sp, color = Secondary)
+                TextButton(onClick = { vm.connectGoogle(open) }) {
+                    Text("Google 서비스 연결·권한 승인")
+                }
                 listOf(
                     "최근 받은 메일" to "gmail_recent",
                     "다가오는 일정" to "calendar_upcoming",
@@ -343,13 +355,27 @@ private fun WorkScreen(vm: MainViewModel) {
             Text("아직 등록된 업무가 없습니다.", color = Secondary,
                 modifier = Modifier.padding(vertical = 20.dp))
         }
-        vm.jobs.forEach { item -> WorkCard(item, vm::cancelWork) }
+        vm.jobs.forEach { item ->
+            WorkCard(item, vm::cancelWork,
+                onAction = { job, action -> vm.reviewWork(job, action, open) },
+                onChooseFile = { job ->
+                    uploadTarget = job
+                    chooseFile.launch(arrayOf("application/pdf", "image/jpeg", "image/png"))
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun WorkCard(job: WorkItem, cancel: (WorkItem) -> Unit) {
+private fun WorkCard(
+    job: WorkItem,
+    cancel: (WorkItem) -> Unit,
+    onAction: (WorkItem, String) -> Unit,
+    onChooseFile: (WorkItem) -> Unit
+) {
     val terminal = job.status in setOf("completed", "failed", "cancelled", "needs_review")
+    var confirmApproval by remember(job.id, job.approvalId) { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
         Column(Modifier.fillMaxWidth().padding(15.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -363,15 +389,50 @@ private fun WorkCard(job: WorkItem, cancel: (WorkItem) -> Unit) {
             }
             if (job.detail.isNotBlank()) Text(job.detail, fontSize = 13.sp,
                 color = Secondary, maxLines = 7)
+            if (job.kind == "browser") {
+                when (job.status) {
+                    "awaiting_approval" -> if (job.approvalId != null) {
+                        Button(onClick = { confirmApproval = true }) {
+                            Text("동작 확인: " + job.approvalLabel.orEmpty().take(45))
+                        }
+                    }
+                    "awaiting_file" -> if (job.approvalId != null) {
+                        Button(onClick = { onChooseFile(job) }) { Text("파일 직접 선택") }
+                    }
+                    "awaiting_human" -> {
+                        Button(onClick = { onAction(job, "view") }) { Text("인증 화면 열기") }
+                        OutlinedButton(onClick = { onAction(job, "resume") }) {
+                            Text("직접 처리 완료 후 다시 확인")
+                        }
+                    }
+                }
+            }
             if (!terminal) TextButton(
                 onClick = { cancel(job) }, modifier = Modifier.align(Alignment.End)
             ) { Text("업무 취소") }
-            if (job.status in setOf("awaiting_approval", "awaiting_file", "awaiting_human")) {
-                Text("이 업무는 기존 앱에서 승인·파일 선택·인증을 이어서 처리할 수 있습니다.",
-                    fontSize = 12.sp, color = Secondary)
-            }
         }
     }
+    if (confirmApproval) AlertDialog(
+        onDismissRequest = { confirmApproval = false },
+        title = { Text("웹사이트 동작 승인") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(job.approvalLabel ?: "사이트에서 다음 동작을 실행합니다.")
+                Text(job.approvalPreview ?: "현재 화면을 확인해 주세요.",
+                    fontSize = 12.sp, color = Secondary, maxLines = 14)
+                Text("승인한 동작은 실제 사이트에 반영될 수 있습니다.",
+                    fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { confirmApproval = false; onAction(job, "approve") }) {
+                Text("이 동작 승인")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmApproval = false }) { Text("취소") }
+        }
+    )
 }
 
 @Composable
