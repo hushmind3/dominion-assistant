@@ -26,6 +26,7 @@
                 android:resource="@xml/voice_interaction_service" />
         </service>
         <service android:name=".voice.DominionVoiceSessionService"
-            android:exported="false" android:process=":voice_session" />
+            android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:process=":voice_session" />
     </application>
 </manifest>
