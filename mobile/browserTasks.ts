@@ -1,4 +1,5 @@
 import {cloud,type CloudAccount} from './cloud';
+import {workRequest} from './workGateway';
 export type BrowserTask={id:string;url:string;goal:string;remember?:boolean};
 export type BrowserDocument={id:string;name:string;kind:'original'|'page';mime:'application/pdf';size:number;sha256:string;source:string;expiresAt:number};
 export type BrowserProfile={site:string;expiresAt:number};
@@ -32,7 +33,8 @@ export async function listBrowserJobs(a:CloudAccount):Promise<BrowserJob[]>{
  return (r.jobs as unknown[]).map(parseBrowserJob);
 }
 export async function browserCommand(a:CloudAccount,task:BrowserTask,action:'start'|'view'|'resume'|'approve'|'cancel',approvalId?:string){
- const r=await cloud(base+action,action==='start'?{...task,confirmed:true}:{id:task.id,...(approvalId?{approvalId}:{})},a.token,60000);
+ const oldBody=action==='start'?{...task,confirmed:true}:{id:task.id,...(approvalId?{approvalId}:{})};
+ const r=await workRequest(a,'browser',action,action==='start'?{...task,confirmed:true}:oldBody,base+action,oldBody,60000);
  if(action==='view'){
   const u=browserUrl(r.url);if(!u||new URL(u).hostname!=='live.browser.run')throw Error('인증 화면 주소가 올바르지 않습니다.');
   return {url:u};
