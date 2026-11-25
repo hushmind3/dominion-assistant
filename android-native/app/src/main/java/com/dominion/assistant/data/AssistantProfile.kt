@@ -70,7 +70,7 @@ object PersonaPrompt {
         val p = profile.validated()
         val words = Regex("[\\p{L}\\p{N}]+")
             .findAll(question.lowercase()).map { it.value }
-            .filter { it.length >= 2 || it.any { c -> c in '\\uac00'..'\\ud7a3' } }
+            .filter { it.length >= 2 || it.any { c -> c in '가'..'힣' } }
             .toSet()
         val ranked = p.notes.mapIndexed { i, note ->
             val matching = words.count { note.lowercase().contains(it) }
