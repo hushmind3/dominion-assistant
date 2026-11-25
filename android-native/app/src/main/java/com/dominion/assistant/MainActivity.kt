@@ -137,7 +137,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
                     1 -> WorkScreen(vm, open = { url ->
                         activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     })
-                    2 -> CallScreen(vm, activity)
+                    2 -> CallScreen(vm, activity, voice)
                     else -> SettingsScreen(vm,
                         onAssistantSettings = {
                             try {
@@ -197,6 +197,8 @@ private fun LoginScreen(vm: MainViewModel, open: (String) -> Unit) {
 @Composable
 private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
     val context = LocalContext.current
+    val livePhase by VoiceCallState.state.collectAsState()
+    val liveActive = livePhase.phase in setOf("connecting","connected","reconnecting")
     var draft by rememberSaveable { mutableStateOf("") }
     val list = rememberLazyListState()
     LaunchedEffect(vm.messages.size) {
@@ -205,7 +207,9 @@ private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
     val microphone = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { allowed ->
-        if (allowed) voice.listen { heard -> vm.send(heard) { voice.speak(it) } }
+        if (allowed && !liveActive) voice.listen { heard -> vm.send(heard) {
+            if (VoiceCallState.state.value.phase == "idle") voice.speak(it)
+        } }
     }
     Column(Modifier.fillMaxSize()) {
         if (vm.models.isNotEmpty()) {
@@ -257,13 +261,16 @@ private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
                 shape = RoundedCornerShape(22.dp)
             )
             FilledTonalButton(
+                enabled = !liveActive,
                 onClick = {
                     if (voice.listening) {
                         voice.stopListening()
                     } else if (ContextCompat.checkSelfPermission(
                             context, Manifest.permission.RECORD_AUDIO
                         ) == PackageManager.PERMISSION_GRANTED) {
-                        voice.listen { heard -> vm.send(heard) { voice.speak(it) } }
+                        voice.listen { heard -> vm.send(heard) {
+                            if (VoiceCallState.state.value.phase == "idle") voice.speak(it)
+                        } }
                     } else microphone.launch(Manifest.permission.RECORD_AUDIO)
                 },
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
@@ -283,7 +290,7 @@ private fun ChatScreen(vm: MainViewModel, voice: NativeVoice) {
 }
 
 @Composable
-private fun CallScreen(vm: MainViewModel, activity: ComponentActivity) {
+private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: NativeVoice) {
     val state by VoiceCallState.state.collectAsState()
     var requestPc by remember { mutableStateOf<RemotePc?>(null) }
     var seconds by remember(state.startedAt) { mutableIntStateOf(0) }
@@ -300,6 +307,8 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity) {
         }
     }
     val launchCall: (RemotePc) -> Unit = { pc ->
+        voice.stopListening()
+        voice.interrupt()
         vm.startVoice(pc) { pairing, selected, id ->
             if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) false
             else runCatching {
