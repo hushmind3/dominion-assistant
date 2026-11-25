@@ -42,6 +42,20 @@ class AssistantTaskIntentTest {
         assertNull(AssistantTaskIntent.parse("""{"action":"mail_watch","mode":"all","sender":"","keyword":"","confirmed":true}"""))
     }
 
+    @Test fun nativeDeviceActionsAreExplicitAndValidated() {
+        val valid = AssistantTaskIntent.parse("""{"action":"device_action","operation":"dial","target":"010-1234-5678"}""")
+        assertEquals(AssistantIntent.Device("dial","010-1234-5678"), valid)
+        assertEquals(valid, AssistantTaskIntent.parse(AssistantTaskIntent.encode(valid!!)))
+        assertTrue(!AssistantTaskIntent.persistable(valid))
+        assertNull(AssistantTaskIntent.parse("""{"action":"device_action","operation":"sms","target":"abc"}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"device_action","operation":"settings","target":"hidden"}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"device_action","operation":"open_url","target":"http://example.com"}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"device_action","operation":"pay","target":"1000"}"""))
+        assertNull(AssistantTaskIntent.parse("""{"action":"device_action","operation":"dial","target":"01012345678","confirmed":true}"""))
+        assertEquals(AssistantIntent.Device("calendar",""),
+            AssistantTaskIntent.parse("""{"action":"device_action","operation":"calendar","target":""}"""))
+    }
+
     @Test fun harmlessChatNeverBecomesAnAction() {
         assertNull(AssistantTaskIntent.parse("오늘 날씨가 궁금하시군요."))
         assertNull(AssistantTaskIntent.parse("비서가 신청을 완료했습니다."))

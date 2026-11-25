@@ -11,6 +11,7 @@ sealed class AssistantIntent {
     data class Google(val operation: String) : AssistantIntent()
     data class Search(val query: String) : AssistantIntent()
     data class Ask(val question: String) : AssistantIntent()
+    data class Device(val operation: String, val target: String) : AssistantIntent()
     data class MailWatch(val mode: String, val sender: String, val keyword: String) : AssistantIntent()
 }
 
@@ -57,6 +58,8 @@ object AssistantTaskIntent {
         {"action":"gmail_recent"} 또는 {"action":"calendar_upcoming"} 또는 {"action":"drive_recent"}
         새 메일을 계속 감시해 달라는 요청은:
         {"action":"mail_watch","mode":"all 또는 important 또는 matched","sender":"발신자 조건 또는 빈 문자열","keyword":"제목 조건 또는 빈 문자열"}
+        휴대폰 자체 기능을 열라는 요청은 {"action":"device_action","operation":"dial 또는 sms 또는 contacts 또는 calendar 또는 camera 또는 settings 또는 maps 또는 open_url 또는 share_text","target":"번호/주소/검색어/공유할 문자; 인수가 필요 없으면 빈 문자열"}.
+        device_action은 사용자가 직접 휴대폰 화면을 열거나 이동해 달라고 분명하게 요청했을 때만 사용하세요. 전화 발신·문자 전송·결제·최종 제출은 실행하지 않고 사용자가 안드로이드 화면에서 확인합니다.
         필요한 정보가 부족해 진행할 수 없으면 {"action":"ask_user","question":"핵심 질문 한 개"}.
         PC 조작, 결제, 본인인증, 최종 제출은 실행했다고 주장하지 마세요.
         사용자가 심부름을 요청한 대화 자체가 시작 요청입니다. 별도의 시작/부탁하기 버튼을 요구하지 마세요.
@@ -100,6 +103,13 @@ object AssistantTaskIntent {
                     (mode == "matched" && sender.isBlank() && keyword.isBlank())) return null
                 AssistantIntent.MailWatch(mode, sender, keyword)
             }
+            "device_action" -> {
+                if (!onlyKeys(data, setOf("action", "operation", "target"))) return null
+                val op = data.optString("operation")
+                val target = data.optString("target").trim()
+                if (!validDeviceAction(op, target)) return null
+                AssistantIntent.Device(op, target)
+            }
             "ask_user" -> {
                 if (!onlyKeys(data, setOf("action", "question"))) return null
                 val question = data.optString("question").trim()
@@ -117,6 +127,18 @@ object AssistantTaskIntent {
         return try { JSONObject(trimmed).has("action") } catch (_: Exception) { false }
     }
 
+    fun validDeviceAction(op: String, target: String): Boolean = when(op) {
+        "dial", "sms" ->
+            target.length in 2..30 &&
+                target.matches(Regex("^[+0-9*#() -]+$")) &&
+                target.count { it.isDigit() } >= 2
+        "contacts", "calendar", "camera", "settings" -> target.isEmpty()
+        "maps" -> target.length in 1..200
+        "share_text" -> target.length in 1..2000
+        "open_url" -> WorkInputPolicy.officialHttps(target) != null
+        else -> false
+    }
+
     fun persistable(intent: AssistantIntent) =
         intent is AssistantIntent.Browser || intent is AssistantIntent.Google ||
             intent is AssistantIntent.MailWatch
@@ -129,6 +151,8 @@ object AssistantTaskIntent {
             is AssistantIntent.Google -> data.put("action", intent.operation)
             is AssistantIntent.Search -> data.put("action", "web_search").put("query", intent.query)
             is AssistantIntent.Ask -> data.put("action", "ask_user").put("question", intent.question)
+            is AssistantIntent.Device -> data.put("action", "device_action")
+                .put("operation", intent.operation).put("target", intent.target)
             is AssistantIntent.MailWatch -> data.put("action", "mail_watch")
                 .put("mode", intent.mode).put("sender", intent.sender).put("keyword", intent.keyword)
         }

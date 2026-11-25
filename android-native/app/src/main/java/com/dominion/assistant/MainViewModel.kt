@@ -21,6 +21,7 @@ import com.dominion.assistant.data.ConversationStore
 import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.AssistantIntent
 import com.dominion.assistant.data.AssistantTaskIntent
+import com.dominion.assistant.device.NativeDeviceActions
 import com.dominion.assistant.data.PreparedErrand
 import com.dominion.assistant.data.BrowserDocument
 import com.dominion.assistant.data.WorkItem
@@ -334,6 +335,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     is AssistantIntent.Ask -> proposal.question
+                    is AssistantIntent.Device -> NativeDeviceActions.open(getApplication(), proposal)
                     null -> if (AssistantTaskIntent.looksLikeAction(response))
                         "이 심부름의 실행 정보를 확인할 수 없어요. 사이트 주소나 필요한 조건을 알려주세요."
                     else response

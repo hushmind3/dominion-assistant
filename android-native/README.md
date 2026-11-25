@@ -33,6 +33,10 @@ Import `android-native/` directly in Android Studio. Alternatively install Gradl
 | Server-defined UI | Versioned schema of allowlisted Google buttons and browser forms, rendered by compiled Compose components; fallback to original static panels |
 | Android assistant role | VoiceInteractionService + SessionService, launch entry point; registration depends on system setting |
 
+## Android OS handoffs (main)
+
+Natural-language requests can now launch approved native Android activities for dialer, SMS composer, contacts, calendar, camera, system settings, map search, HTTPS URL and text sharing. The OS owns the final user action: **no automatic call, SMS, payment or form submission**. A strictly validated `device_action` is handled locally from chat without adding a second interface. These handoffs are not general third-party app control; accessibility-driven cross-app workflows and runtime verification remain open.
+
 ## Not yet ported / verified
 
 The existing Expo messenger's **general PC relay commands beyond task/history/cancel/voice**, rich attachments within ordinary chat, camera, profiles, full shared conversation journal synchronization, standalone on-device conversation engine and arbitrary layout components are **not yet ported**. The native FCM and bounded server-driven work menu are implemented in source, but **production credentials and physical-device verification are pending**. PC voice calls require a reachable live DOMINION PC voice service configured with LiveKit, STT and TTS; no standalone Cloud-owned voice agent is implemented. The new native LiveKit room and microphone foreground service are **implemented in source but not compiled or tested on a physical Android device**. OS assistant registration is only a launch/session baseline: it **does not** implement hotword listening or background AI conversation. No real Android build, physical-device UX validation, Cloud deployment, or binary signature check has been claimed at the time of this commit.
