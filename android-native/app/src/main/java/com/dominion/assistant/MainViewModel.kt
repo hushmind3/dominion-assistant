@@ -294,14 +294,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendPcWork(pc:RemotePc,instruction:String) {
+    fun sendPcWork(pc:RemotePc,instruction:String,onAccepted:()->Unit={}) {
         val current=account ?: return
         if(pcBusy||instruction.trim().isEmpty())return
         pcBusy=true
         viewModelScope.launch {
             try {
                 repository.sendPc(current,pc,instruction)
-                if(account?.id==current.id)refreshPcWork(pc)
+                if(account?.id==current.id){
+                    onAccepted()
+                    refreshPcWork(pc)
+                }
             }catch(e:Exception){
                 error="PC 업무 접수 상태가 불확실합니다. PC 업무 기록을 먼저 확인해 주세요. "+
                     (e.message?:"연결 오류")
