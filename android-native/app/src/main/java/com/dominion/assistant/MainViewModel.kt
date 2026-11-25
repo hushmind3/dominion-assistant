@@ -16,6 +16,9 @@ import com.dominion.assistant.data.ChatLine
 import com.dominion.assistant.data.CloudError
 import com.dominion.assistant.data.ConversationStore
 import com.dominion.assistant.data.WorkItem
+import com.dominion.assistant.data.RemotePc
+import com.dominion.assistant.voice.VoicePairing
+import com.dominion.assistant.voice.voiceId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +48,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var selectedModel by mutableStateOf("")
         private set
     var jobs by mutableStateOf<List<WorkItem>>(emptyList())
+        private set
+    var pcs by mutableStateOf<List<RemotePc>>(emptyList())
+        private set
+    var voiceBusy by mutableStateOf(false)
         private set
 
     init {
@@ -80,6 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messages = withContext(Dispatchers.IO) { history.history(value.id) }
         refreshModels()
         refreshJobs()
+        refreshPcs()
     }
 
     fun clearError() { error = "" }
@@ -117,6 +125,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         account = null
         messages = emptyList()
         jobs = emptyList()
+        pcs = emptyList()
         models = emptyList()
         selectedModel = ""
         error = ""
@@ -170,6 +179,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun refreshPcs() {
+        val current=account?:return
+        viewModelScope.launch {
+            try {
+                val found=repository.pcs(current)
+                if(account?.id==current.id)pcs=found
+            }catch(e:Exception){error=e.message?:"PC 연결 목록을 가져오지 못했습니다."}
+        }
+    }
+
+    fun startVoice(pc:RemotePc, onReady:(VoicePairing,RemotePc,String)->Boolean) {
+        val current=account?:return
+        if(voiceBusy||!pc.online)return
+        voiceBusy=true
+        error=""
+        viewModelScope.launch {
+            val id=voiceId()
+            try {
+                val pairing=repository.startVoice(current,pc,id)
+                val started=account?.id==current.id&&onReady(pairing,pc,id)
+                if(!started){
+                    try{repository.stopVoice(current,pc,id)}catch(_:Exception){}
+                    if(account?.id==current.id)error="통화 화면에서 다시 시도해 주세요."
+                }
+            }catch(e:Exception){
+                error=e.message?:"PC 음성 통화 시작 실패"
+                // A timed-out request may have executed; never automatically start it again.
+            }finally{voiceBusy=false}
         }
     }
 
