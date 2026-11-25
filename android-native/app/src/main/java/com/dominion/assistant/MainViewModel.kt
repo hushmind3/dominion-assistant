@@ -359,6 +359,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun sendPcAttachment(pc:RemotePc,uri:Uri,instruction:String,onAccepted:()->Unit={}) {
+        val current=account?:return
+        if(pcBusy||instruction.trim().isBlank())return
+        pcBusy=true
+        error=""
+        viewModelScope.launch {
+            try {
+                val attachment=com.dominion.assistant.data.PcAttachmentPolicy.read(
+                    getApplication(),uri)
+                repository.sendPcAttachment(current,pc,instruction,attachment)
+                if(account?.id==current.id) {
+                    onAccepted()
+                    refreshPcWork(pc)
+                }
+            } catch(e:IllegalArgumentException) {
+                if(account?.id==current.id)error=e.message?:"첨부파일을 확인해 주세요."
+            } catch(e:Exception) {
+                if(account?.id==current.id) {
+                    error="PC 첨부/작업 접수 상태가 불확실합니다. 먼저 PC 업무 기록을 확인해 주세요. "+
+                        (e.message?:"연결 오류")
+                    refreshPcWork(pc)
+                }
+            } finally {pcBusy=false}
+        }
+    }
+
     fun cancelPcWork(pc:RemotePc,requestId:String) {
         val current=account ?: return
         if(pcBusy)return
