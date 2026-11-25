@@ -10,6 +10,10 @@ import java.util.Base64
 
 data class Pairing(val token: String, val url: String, val expiresAt: Long)
 data class RemotePc(val id: String, val name: String, val online: Boolean)
+data class PcTurn(val requestId: String, val text: String, val status: String,
+                  val answer: String, val createdAt: Long, val kind: String)
+data class InboxMessage(val id: String, val deviceId: String,
+                        val text: String, val time: Long)
 data class WorkItem(
     val id: String, val kind: String, val status: String,
     val title: String, val detail: String, val updatedAt: Long,
@@ -75,6 +79,51 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
                 return@mapNotNull null
             RemotePc(id,row.optString("name","PC").take(80),row.optBoolean("online"))
         }.take(10)
+    }
+
+    suspend fun pcHistory(account:Account, pc:RemotePc):List<PcTurn> {
+        val data=CloudRelay().request(account,pc.id,"history")
+        val turns=data.optJSONArray("turns") ?: JSONArray()
+        return (0 until minOf(turns.length(),200)).mapNotNull { i ->
+            val row=turns.optJSONObject(i) ?: return@mapNotNull null
+            val id=row.optString("requestId")
+            if(!runCatching { java.util.UUID.fromString(id).toString()==id }.getOrDefault(false))
+                return@mapNotNull null
+            PcTurn(
+                id,row.optString("text").take(4000),row.optString("status").take(40),
+                row.optString("answer").take(12_000),
+                row.optLong("createdAt"),row.optString("kind").take(30)
+            )
+        }
+    }
+
+    suspend fun sendPc(account:Account,pc:RemotePc,text:String):String {
+        require(pc.online) { "PC가 오프라인입니다." }
+        require(text.trim().length in 1..4000)
+        val id=java.util.UUID.randomUUID().toString()
+        val body=obj("clientId" to id,"text" to text.trim(),"kind" to "task")
+        val result=CloudRelay().request(account,pc.id,"send",body)
+        val requestId=result.getString("requestId")
+        require(java.util.UUID.fromString(requestId).toString()==requestId)
+        return requestId
+    }
+
+    suspend fun cancelPc(account:Account,pc:RemotePc,requestId:String) {
+        require(java.util.UUID.fromString(requestId).toString()==requestId)
+        CloudRelay().request(account,pc.id,"cancel",obj("requestId" to requestId))
+    }
+
+    suspend fun inbox(account:Account):List<InboxMessage> {
+        val rows=api.get("/v1/assistant/messages",account.token)
+            .optJSONArray("messages") ?: JSONArray()
+        return (0 until minOf(rows.length(),100)).mapNotNull { i ->
+            val row=rows.optJSONObject(i) ?: return@mapNotNull null
+            val id=row.optString("id")
+            val deviceId=row.optString("deviceId")
+            val text=row.optString("text")
+            if(id.length !in 1..160 || text.isBlank() || text.length>2000)return@mapNotNull null
+            InboxMessage(id,deviceId,text,row.optLong("time"))
+        }
     }
 
     suspend fun startVoice(account: Account, pc: RemotePc, voiceId: String): VoicePairing {
