@@ -283,6 +283,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) { history.append(current.id, "user", input) }
                 if (account?.id != current.id) return@launch
                 messages = messages + ChatLine("user", input, System.currentTimeMillis())
+                // A brief follow-up accepts the already prepared task; do not ask
+                // the LLM to invent a second task or duplicate its job ID.
+                val ready = pendingErrands.lastOrNull { it.state == "ready" }
+                val continuation = input.matches(Regex(
+                    "^(진행(해|해줘|해주세요)?|시작해줘|계속해|계속 진행해줘|해줘|부탁해)[.!?\\s]*$"
+                ))
+                if (ready != null && continuation) {
+                    approveErrand(ready.id)
+                    val note = "이전에 요청하신 심부름을 진행하고 있어요."
+                    withContext(Dispatchers.IO) { history.append(current.id, "assistant", note) }
+                    if (account?.id == current.id) {
+                        messages = messages + ChatLine("assistant", note, System.currentTimeMillis())
+                        onReply?.invoke(note)
+                    }
+                    return@launch
+                }
                 val response = repository.reply(current, selectedModel, messages, profile)
                 if (account?.id != current.id) return@launch
                 val proposal = AssistantTaskIntent.parse(response)
@@ -296,7 +312,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.IO) { history.saveErrand(current.id, errand) }
                         if (account?.id != current.id) return@launch
                         pendingErrands = pendingErrands + errand
-                        "심부름 내용을 준비했어요. 아래 내용을 확인하면 바로 시작할게요."
+                        // A chat request is already the user's request to start the errand.
+                        // Authentication, uploads and consequential submissions are gated
+                        // by the server at the point where the action actually occurs.
+                        approveErrand(errand.id)
+                        "심부름 접수를 진행하고 있어요. 다른 대화를 계속하셔도 됩니다. 인증이나 최종 승인이 필요할 때 알려드릴게요."
                     }
                     is AssistantIntent.Search -> {
                         val sources = repository.searchWeb(current, proposal.query)
