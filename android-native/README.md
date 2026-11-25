@@ -23,12 +23,14 @@ Import \`android-native/\` directly in Android Studio. Alternatively install Gra
 | Google work | Read-only Gmail, Calendar and Drive queued jobs, OAuth consent in external browser |
 | Browser work | Explicit start, per-action approval, handoff, resume, cancel, Android document picker; 2 MB PDF/JPEG/PNG checks |
 | Work compatibility | New \`/v1/assistant/work/*\` dispatcher when deployed; fallback to existing Google/browser endpoints |
-| Voice | Android SpeechRecognizer (tap to talk) and TextToSpeech; app-visible foreground interaction only |
+| Voice | Android SpeechRecognizer/TTS for tap-to-talk; LiveKit Android SDK 2.31.0 for full-duplex WebRTC voice |
+| Android call service | Microphone foreground service owns the LiveKit room; ongoing notification supports mute/stop, app background does not force disconnect |
+| PC pairing | Existing authenticated Cloud WebSocket RPC starts/stops the PC bot, retrieves short-lived LiveKit room credentials |
 | Android assistant role | VoiceInteractionService + SessionService, launch entry point; registration depends on system setting |
 
 ## Not yet ported / verified
 
-The existing Expo messenger, PC relay WebSocket protocol, push updates, notification actions, attachments within ordinary chat, camera, profiles, live WebRTC voice room, truly continuous duplex talk, microphone foreground service, and dynamic server-provided Compose component definitions are **not yet ported**. OS assistant registration is only a launch/session baseline: it **does not** implement hotword listening or background AI conversation. No real Android build, physical-device UX validation, Cloud deployment, or binary signature check has been claimed at the time of this commit.
+The existing Expo messenger's **general PC relay commands**, push updates, notification-to-action handling outside the active call, attachments within ordinary chat, camera, profiles, standalone on-device conversation engine, and dynamic server-provided Compose component definitions are **not yet ported**. PC voice calls require a reachable live DOMINION PC voice service configured with LiveKit, STT and TTS; no standalone Cloud-owned voice agent is implemented. The new native LiveKit room and microphone foreground service are **implemented in source but not compiled or tested on a physical Android device**. OS assistant registration is only a launch/session baseline: it **does not** implement hotword listening or background AI conversation. No real Android build, physical-device UX validation, Cloud deployment, or binary signature check has been claimed at the time of this commit.
 
 The client does not evaluate server-supplied JavaScript. A future server-driven UI layer should implement a tightly constrained, versioned schema of Compose components and explicit user actions, not unrestricted QuickJS remote code. Do not copy Pickle assets or decompiled sources.
 
@@ -37,7 +39,9 @@ The client does not evaluate server-supplied JavaScript. A future server-driven 
 - Fixed HTTPS Cloud origin; redirects disabled. No custom URLs, host LAN permissions, or model API keys.
 - Every Google and browser operation goes through the Cloud's already-scoped app session and approvals.
 - Browser file names, MIME, signatures, and maximum length are validated on the device and validated again by the server.
-- No background microphone access. Speech recognizer availability depends on Android's installed provider and runtime microphone permission.
+- Android tap-to-talk speech recognition requires foreground UI. Separately, an **active user-started LiveKit call** uses a microphone-type foreground service and may continue when the screen is locked. Starting a microphone foreground service from background is not attempted.
+- Android 13+ notification permission is requested at call start; denial does not authorize background service creation. Platform battery controls and OEM policies may still terminate calls.
+- Incoming remote PC voice-start/stop commands never automatically retry after an uncertain RPC outcome. Call-end attempts best-effort PC stop once.
 - The old \`mobile/\` app and its APK workflow remain untouched. The \`main\` branch and production deployment remain unchanged.
 
-Reference: https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler and https://developer.android.com/reference/android/service/voice/VoiceInteractionService
+References: https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler ; https://developer.android.com/develop/background-work/services/fgs/service-types ; https://docs.livekit.io/transport/sdk-platforms/android/ ; https://github.com/livekit/client-sdk-android/releases/tag/v2.31.0
