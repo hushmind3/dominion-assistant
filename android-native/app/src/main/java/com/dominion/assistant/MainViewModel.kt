@@ -275,17 +275,142 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { history.append(current.id, "user", input) }
+                if (account?.id != current.id) return@launch
                 messages = messages + ChatLine("user", input, System.currentTimeMillis())
                 val response = repository.reply(current, selectedModel, messages, profile)
-                withContext(Dispatchers.IO) { history.append(current.id, "assistant", response) }
+                if (account?.id != current.id) return@launch
+                val proposal = AssistantTaskIntent.parse(response)
+                val answer: String = when (proposal) {
+                    is AssistantIntent.Browser, is AssistantIntent.Google -> {
+                        val errand = PreparedErrand(
+                            java.util.UUID.randomUUID().toString(),
+                            proposal, System.currentTimeMillis()
+                        )
+                        withContext(Dispatchers.IO) { history.saveErrand(current.id, errand) }
+                        if (account?.id != current.id) return@launch
+                        pendingErrands = pendingErrands + errand
+                        "심부름 내용을 준비했어요. 아래 내용을 확인하면 바로 시작할게요."
+                    }
+                    is AssistantIntent.Search -> {
+                        val sources = repository.searchWeb(current, proposal.query)
+                        if (sources.isEmpty()) {
+                            "검색 결과를 찾지 못했어요. 다른 검색어로 다시 부탁해 주세요."
+                        } else buildString {
+                            append("찾아본 자료예요.\n")
+                            for (source in sources.take(5)) {
+                                append("\n• ").append(source.title.take(100))
+                                append("\n").append(source.url)
+                                if (source.description.isNotBlank()) {
+                                    append("\n").append(source.description.take(260))
+                                }
+                            }
+                        }
+                    }
+                    is AssistantIntent.Ask -> proposal.question
+                    null -> if (AssistantTaskIntent.looksLikeAction(response))
+                        "이 심부름의 실행 정보를 확인할 수 없어요. 사이트 주소나 필요한 조건을 알려주세요."
+                    else response
+                }
+                withContext(Dispatchers.IO) { history.append(current.id, "assistant", answer) }
                 if (account?.id == current.id) {
-                    messages = messages + ChatLine("assistant", response, System.currentTimeMillis())
-                    onReply?.invoke(response)
+                    messages = messages + ChatLine("assistant", answer, System.currentTimeMillis())
+                    onReply?.invoke(answer)
                 }
             } catch (e: Exception) {
-                error = "답변을 완료하지 못했습니다: " + (e.message ?: "네트워크 오류")
+                if (account?.id == current.id) {
+                    error = "답변을 완료하지 못했습니다: " + (e.message ?: "네트워크 오류")
+                }
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    /** A saved proposal is not an execution record. The user explicitly starts it. */
+    fun approveErrand(id: String) {
+        val current = account ?: return
+        val draft = pendingErrands.firstOrNull { it.id == id && it.state == "ready" }
+            ?: return
+        if (sendingErrandId != null) return
+        sendingErrandId = id
+        viewModelScope.launch {
+            try {
+                when (val intent = draft.intent) {
+                    is AssistantIntent.Browser ->
+                        repository.browser(current, intent.url, intent.goal, draft.id)
+                    is AssistantIntent.Google ->
+                        repository.google(current, intent.operation, draft.id)
+                    else -> throw IllegalArgumentException("지원하지 않는 심부름입니다.")
+                }
+                withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
+                if (account?.id == current.id) {
+                    pendingErrands = pendingErrands.filterNot { it.id == id }
+                    val note = "심부름을 접수했어요. 진행 상태를 확인해 알려드릴게요."
+                    withContext(Dispatchers.IO) { history.append(current.id, "assistant", note) }
+                    messages = messages + ChatLine("assistant", note, System.currentTimeMillis())
+                    refreshJobs()
+                }
+            } catch (e: Exception) {
+                if (account?.id == current.id) {
+                    val definitelyRejected = e is CloudError &&
+                        e.statusCode in setOf(400, 401, 403, 404, 409, 413, 429)
+                    if (!definitelyRejected) {
+                        withContext(Dispatchers.IO) {
+                            history.updateErrandState(current.id, id, "unknown")
+                        }
+                        pendingErrands = pendingErrands.map {
+                            if (it.id == id) it.copy(state = "unknown") else it
+                        }
+                        error = "접수 여부를 확인할 수 없어요. 자동으로 중복 접수하지 않습니다."
+                    } else {
+                        error = "심부름 접수 실패: " + (e.message ?: "요청 거절")
+                    }
+                }
+            } finally {
+                if (sendingErrandId == id) sendingErrandId = null
+            }
+        }
+    }
+
+    /** Unknown submission outcomes are read-only checked; never silently replayed. */
+    fun checkErrand(id: String) {
+        val current = account ?: return
+        val draft = pendingErrands.firstOrNull { it.id == id && it.state == "unknown" }
+            ?: return
+        if (sendingErrandId != null) return
+        sendingErrandId = id
+        viewModelScope.launch {
+            try {
+                val latest = repository.jobs(current)
+                if (account?.id != current.id) return@launch
+                jobs = latest
+                if (latest.any { it.id == draft.id }) {
+                    withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
+                    pendingErrands = pendingErrands.filterNot { it.id == id }
+                } else {
+                    error = "아직 서버에서 접수 기록을 찾지 못했어요. 중복 제출을 막기 위해 다시 보내지 않았습니다."
+                }
+            } catch (e: Exception) {
+                if (account?.id == current.id)
+                    error = "접수 상태 조회 실패: " + (e.message ?: "연결 오류")
+            } finally {
+                if (sendingErrandId == id) sendingErrandId = null
+            }
+        }
+    }
+
+    fun dismissErrand(id: String) {
+        val current = account ?: return
+        if (sendingErrandId == id) return
+        if (pendingErrands.none { it.id == id }) return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { history.deleteErrand(current.id, id) }
+                if (account?.id == current.id)
+                    pendingErrands = pendingErrands.filterNot { it.id == id }
+            } catch (e: Exception) {
+                if (account?.id == current.id)
+                    error = e.message ?: "심부름 초안을 닫지 못했습니다."
             }
         }
     }
