@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.dominion.assistant.data.ChatLine
+import com.dominion.assistant.data.AssistantProfile
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.voice.NativeVoice
 import com.dominion.assistant.voice.VoiceCallService
@@ -46,10 +47,10 @@ import com.dominion.assistant.data.RemotePc
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.delay
 
-private val Forest = Color(0xFF14261D)
-private val Panel = Color(0xFF23392B)
-private val Accent = Color(0xFFB5E4BE)
-private val Secondary = Color(0xFFB8D2C0)
+private val Forest = Color(0xFF0F151A)
+private val Panel = Color(0xFF202A30)
+private val Accent = Color(0xFF9EE9D0)
+private val Secondary = Color(0xFF9DADB4)
 
 class MainActivity : ComponentActivity() {
     var openVoiceEvent by mutableIntStateOf(0)
@@ -88,6 +89,8 @@ class MainActivity : ComponentActivity() {
 private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: MainActivity) {
     // The conversation owns the home screen. Other functions live in a drawer.
     var page by rememberSaveable { mutableIntStateOf(0) }
+    // A single draft survives opening and closing the in-call chat sheet.
+    var chatDraft by rememberSaveable(vm.account?.id) { mutableStateOf("") }
     var showSignOut by remember { mutableStateOf(false) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -111,7 +114,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
         drawerContent={
             if(vm.account!=null) {
                 ModalDrawerSheet(
-                    drawerContainerColor=Color(0xFF19261F),
+                    drawerContainerColor=Color(0xFF172127),
                     modifier=Modifier.width(292.dp)
                 ) {
                     Column(Modifier.fillMaxWidth().padding(start=22.dp,end=18.dp,
@@ -121,12 +124,11 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                             fontWeight=FontWeight.SemiBold,color=Color(0xFFF2F7F2))
                         Text("내 곁의 비서",color=Secondary,fontSize=12.sp)
                     }
-                    HorizontalDivider(color=Color(0xFF304338))
+                    HorizontalDivider(color=Color(0xFF304047))
                     listOf(
                         Triple(0,"대화","◌"),
-                        Triple(1,"심부름","✦"),
-                        Triple(2,"전화 연결","☎"),
-                        Triple(3,"내 비서·설정","⚙")
+                        Triple(2,"통화","☎"),
+                        Triple(3,"설정","⚙")
                     ).forEach { (index,label,glyph) ->
                         NavigationDrawerItem(
                             label={Text(label,fontSize=15.sp)},
@@ -138,9 +140,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                             },
                             modifier=Modifier.padding(horizontal=12.dp,vertical=3.dp),
                             colors=NavigationDrawerItemDefaults.colors(
-                                selectedContainerColor=Color(0xFF294436),
-                                selectedTextColor=Color(0xFFD5F4DD),
-                                unselectedTextColor=Color(0xFFD7E1D9)
+                                selectedContainerColor=Color(0xFF28463E),
+                                selectedTextColor=Color(0xFFD0F2E7),
+                                unselectedTextColor=Color(0xFFDDE5E9)
                             )
                         )
                     }
@@ -181,7 +183,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                         if(vm.busy)CircularProgressIndicator(
                             Modifier.size(18.dp),strokeWidth=2.dp,color=Accent)
                     }
-                    HorizontalDivider(color=Color(0xFF22332A),thickness=.5.dp)
+                    HorizontalDivider(color=Color(0xFF2D3940),thickness=.5.dp)
                 }
             }
         ) { pad ->
@@ -206,11 +208,13 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                         onSpeaker={VoiceCallService.command(activity,VoiceCallService.SPEAKER)},
                         onHangup={VoiceCallService.command(activity,VoiceCallService.STOP)}
                     ) {
-                        ChatScreen(vm,voice,onNavigate={page=it},inVoiceSheet=true)
+                        ChatScreen(vm,voice,onNavigate={page=it},draft=chatDraft,
+                            onDraftChange={chatDraft=it},inVoiceSheet=true)
                     }
                 } else {
                     when(page) {
-                        0 -> ChatScreen(vm,voice,onNavigate={page=it})
+                        0 -> ChatScreen(vm,voice,onNavigate={page=it},draft=chatDraft,
+                             onDraftChange={chatDraft=it})
                         1 -> WorkScreen(vm,open={url->
                             activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
                         })
@@ -279,12 +283,13 @@ private fun ChatScreen(
     vm: MainViewModel,
     voice: NativeVoice,
     onNavigate: (Int) -> Unit,
+    draft: String,
+    onDraftChange: (String) -> Unit,
     inVoiceSheet: Boolean = false
 ) {
     val context = LocalContext.current
     val active by VoiceCallState.state.collectAsState()
     val calling = active.phase in setOf("connecting","connected","reconnecting")
-    var draft by rememberSaveable { mutableStateOf("") }
     var showActions by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -312,20 +317,13 @@ private fun ChatScreen(
         } else microphone.launch(Manifest.permission.RECORD_AUDIO)
     }
     Column(Modifier.fillMaxSize().background(Forest)) {
-        if(!inVoiceSheet) {
-            // The provider selector is deliberately hidden until requested.
-            Row(Modifier.fillMaxWidth().padding(start=14.dp,end=14.dp,top=2.dp),
+
+        if(showModels && !inVoiceSheet) {
+            Row(Modifier.fillMaxWidth().padding(start=18.dp,end=10.dp),
                 verticalAlignment=Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick={showModels=!showModels},
-                    contentPadding=PaddingValues(horizontal=10.dp,vertical=2.dp)) {
-                    Text("모델  ·  "+vm.selectedModel.substringAfterLast('/').take(22),
-                        fontSize=11.sp,color=Secondary)
-                    Text(if(showModels)"  ⌃" else "  ⌄",fontSize=11.sp,color=Secondary)
-                }
+                Text("모델 선택",Modifier.weight(1f),color=Secondary,fontSize=12.sp)
+                TextButton(onClick={showModels=false}) { Text("닫기",fontSize=12.sp) }
             }
-        }
-        if(showModels) {
             if(vm.models.isEmpty()) {
                 Row(Modifier.padding(horizontal=18.dp),verticalAlignment=Alignment.CenterVertically) {
                     Text("모델 목록을 불러오지 못했습니다.",fontSize=12.sp,color=Secondary)
@@ -352,21 +350,21 @@ private fun ChatScreen(
         ) {
             if(vm.messages.isEmpty()) item {
                 Column(
-                    Modifier.fillMaxWidth().padding(top=if(inVoiceSheet)15.dp else 85.dp),
+                    Modifier.fillMaxWidth().padding(top=if(inVoiceSheet)15.dp else 64.dp),
                     horizontalAlignment=Alignment.CenterHorizontally,
                     verticalArrangement=Arrangement.spacedBy(11.dp)
                 ) {
-                    AssistantAvatarView(vm.profile,if(inVoiceSheet)54.dp else 86.dp)
+                    AssistantAvatarView(vm.profile,if(inVoiceSheet)48.dp else 74.dp)
                     Spacer(Modifier.height(5.dp))
                     Text("무엇을 도와드릴까요?",
                         color=Color(0xFFF2F5F0),
-                        fontSize=if(inVoiceSheet)19.sp else 26.sp,
+                        fontSize=if(inVoiceSheet)19.sp else 24.sp,
                         fontWeight=FontWeight.SemiBold)
-                    Text("말씀하세요. 함께 알아보고 처리할게요.",
+                    Text("이야기부터 심부름까지, 편하게 말씀하세요.",
                         color=Secondary,fontSize=13.sp,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
-            items(vm.messages) { message -> MessageBubble(message) }
+            items(vm.messages) { message -> MessageBubble(message,vm.profile) }
         }
         if(voice.status!="음성 대기"&&!calling) {
             Text(voice.status,color=Secondary,fontSize=11.sp,
@@ -377,7 +375,7 @@ private fun ChatScreen(
                 modifier=Modifier.padding(horizontal=18.dp,vertical=4.dp))
         }
         Surface(
-            color=Panel,shape=RoundedCornerShape(28.dp),
+            color=Panel,shape=RoundedCornerShape(28.dp),tonalElevation=1.dp,
             modifier=Modifier.fillMaxWidth().imePadding()
                 .padding(horizontal=12.dp,vertical=10.dp)
         ) {
@@ -393,23 +391,23 @@ private fun ChatScreen(
                 }
                 BasicTextField(
                     value=draft,
-                    onValueChange={draft=it.take(8000)},
+                    onValueChange={onDraftChange(it.take(8000))},
                     modifier=Modifier.weight(1f).padding(vertical=11.dp,horizontal=8.dp),
-                    textStyle=TextStyle(color=Color(0xFFF3F7F2),fontSize=15.sp),
+                    textStyle=TextStyle(color=Color(0xFFF4F7F9),fontSize=15.sp),
                     cursorBrush=androidx.compose.ui.graphics.SolidColor(Accent),
                     minLines=1,maxLines=4,
                     decorationBox={input->
                         Box {
                             if(draft.isEmpty())
                                 Text(if(calling)"통화 중 메시지 입력" else "무엇이든 말씀하세요",
-                                    color=Color(0xFF91A598),fontSize=14.sp)
+                                    color=Color(0xFF93A3AC),fontSize=14.sp)
                             input()
                         }
                     }
                 )
                 if(draft.isBlank()&&!calling) {
                     IconButton(onClick=dictate,modifier=Modifier.size(44.dp)) {
-                        Text(if(voice.listening)"■" else "●",
+                        Text(if(voice.listening)"■" else "🎙",
                             color=if(voice.listening)Color(0xFFE9B5AB) else Secondary,
                             fontSize=18.sp)
                     }
@@ -419,7 +417,7 @@ private fun ChatScreen(
                         enabled=!vm.busy&&vm.selectedModel.isNotBlank(),
                         onClick={
                             val message=draft.trim()
-                            draft=""
+                            onDraftChange("")
                             vm.send(message)
                         },
                         modifier=Modifier.size(42.dp),
@@ -440,29 +438,30 @@ private fun ChatScreen(
     if(showActions) {
         ModalBottomSheet(
             onDismissRequest={showActions=false},
-            containerColor=Color(0xFF1A2920)
+            containerColor=Color(0xFF1C272D)
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=8.dp),
                 verticalArrangement=Arrangement.spacedBy(5.dp)) {
                 Text("무엇을 해드릴까요?",modifier=Modifier.padding(start=10.dp,bottom=10.dp),
                     fontSize=19.sp,fontWeight=FontWeight.SemiBold)
                 listOf(
-                    Triple("✦","PC에 심부름 맡기기",1),
-                    Triple("▤","사진·파일로 부탁하기",1),
+                    Triple("✦","PC에 부탁하기",1),
+                    Triple("▤","사진·파일",1),
                     Triple("◷","일정·알림",1),
-                    Triple("☎","음성으로 이야기하기",2),
-                    Triple("◎","내 비서 설정",3)
+                    Triple("☎","통화",2),
+                    Triple("◇","모델 바꾸기",-1),
+                    Triple("◎","설정",3)
                 ).forEach { (glyph,label,destination) ->
                     Surface(onClick={
                         showActions=false
-                        onNavigate(destination)
+                        if(destination==-1)showModels=true else onNavigate(destination)
                     },shape=RoundedCornerShape(14.dp),
                         color=Color.Transparent,modifier=Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=13.dp),
                             verticalAlignment=Alignment.CenterVertically,
                             horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                             Text(glyph,color=Accent,fontSize=23.sp)
-                            Text(label,color=Color(0xFFEDF5ED),fontSize=15.sp)
+                            Text(label,color=Color(0xFFEAF2F4),fontSize=15.sp)
                         }
                     }
                 }
@@ -523,7 +522,7 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
             Column(Modifier.fillMaxWidth().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(92.dp).background(Color(0xFF355C43), CircleShape),
+                Box(Modifier.size(92.dp).background(Color(0xFF2E5B53), CircleShape),
                     contentAlignment = Alignment.Center) {
                     Text("✦", color = Accent, fontSize = 62.sp)
                 }
@@ -620,17 +619,31 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
 }
 
 @Composable
-private fun MessageBubble(message: ChatLine) {
-    val user = message.role == "user"
-    Row(Modifier.fillMaxWidth(),
-        horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
-        Surface(
-            color = if (user) Color(0xFF355C43) else Panel,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth(0.9f)
-        ) {
-            Text(message.text, Modifier.padding(14.dp),
-                color = Color.White, fontSize = 15.sp, lineHeight = 23.sp)
+private fun MessageBubble(message: ChatLine, profile: AssistantProfile) {
+    val mine = message.role == "user"
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement=if(mine)Arrangement.End else Arrangement.Start,
+        verticalAlignment=Alignment.Bottom
+    ) {
+        if(!mine) {
+            AssistantAvatarView(profile,28.dp)
+            Spacer(Modifier.width(9.dp))
+        }
+        Column(horizontalAlignment=if(mine)Alignment.End else Alignment.Start) {
+            if(!mine) {
+                Text(profile.name,color=Secondary,fontSize=11.sp,
+                    modifier=Modifier.padding(start=4.dp,bottom=5.dp))
+            }
+            Surface(
+                modifier=Modifier.widthIn(max=304.dp),
+                color=if(mine)Color(0xFF2E5B53) else Panel,
+                shape=if(mine)RoundedCornerShape(18.dp,18.dp,5.dp,18.dp)
+                      else RoundedCornerShape(18.dp,18.dp,18.dp,5.dp)
+            ) {
+                Text(message.text,Modifier.padding(horizontal=15.dp,vertical=11.dp),
+                    color=Color(0xFFF0F6F5),fontSize=15.sp,lineHeight=22.sp)
+            }
         }
     }
 }
