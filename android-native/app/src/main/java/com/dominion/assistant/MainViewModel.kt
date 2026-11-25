@@ -17,6 +17,8 @@ import com.dominion.assistant.data.CloudError
 import com.dominion.assistant.data.ConversationStore
 import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
+import com.dominion.assistant.data.PcTurn
+import com.dominion.assistant.data.InboxMessage
 import com.dominion.assistant.voice.VoicePairing
 import com.dominion.assistant.voice.voiceId
 import com.dominion.assistant.voice.VoiceCallState
@@ -57,6 +59,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var voiceBusy by mutableStateOf(false)
         private set
+    var pcTurns by mutableStateOf<List<PcTurn>>(emptyList())
+        private set
+    var selectedPcId by mutableStateOf("")
+        private set
+    var inbox by mutableStateOf<List<InboxMessage>>(emptyList())
+        private set
+    var pcBusy by mutableStateOf(false)
+        private set
 
     init {
         viewModelScope.launch {
@@ -92,6 +102,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshModels()
         refreshJobs()
         refreshPcs()
+        refreshInbox()
     }
 
     fun clearError() { error = "" }
@@ -131,6 +142,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messages = emptyList()
         jobs = emptyList()
         pcs = emptyList()
+        pcTurns = emptyList()
+        inbox = emptyList()
+        selectedPcId = ""
         models = emptyList()
         selectedModel = ""
         error = ""
@@ -190,6 +204,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun refreshInbox() {
+        val current=account ?: return
+        viewModelScope.launch {
+            try {
+                val result=repository.inbox(current)
+                if(account?.id==current.id) inbox=result
+            }catch(e:Exception){
+                error=e.message?:"PC 알림을 확인하지 못했습니다."
+            }
+        }
+    }
+
+    fun refreshPcWork(pc:RemotePc) {
+        val current=account ?: return
+        selectedPcId=pc.id
+        if(!pc.online) { pcTurns=emptyList();return }
+        viewModelScope.launch {
+            try {
+                val result=repository.pcHistory(current,pc)
+                if(account?.id==current.id&&selectedPcId==pc.id)pcTurns=result
+            }catch(e:Exception){
+                error=e.message?:"PC 업무 기록을 확인하지 못했습니다."
+            }
+        }
+    }
+
+    fun sendPcWork(pc:RemotePc,instruction:String) {
+        val current=account ?: return
+        if(pcBusy||instruction.trim().isEmpty())return
+        pcBusy=true
+        viewModelScope.launch {
+            try {
+                repository.sendPc(current,pc,instruction)
+                if(account?.id==current.id)refreshPcWork(pc)
+            }catch(e:Exception){
+                error="PC 업무 접수 상태가 불확실합니다. PC 업무 기록을 먼저 확인해 주세요. "+
+                    (e.message?:"연결 오류")
+                if(account?.id==current.id)refreshPcWork(pc)
+            }finally { pcBusy=false }
+        }
+    }
+
+    fun cancelPcWork(pc:RemotePc,requestId:String) {
+        val current=account ?: return
+        if(pcBusy)return
+        pcBusy=true
+        viewModelScope.launch {
+            try{
+                repository.cancelPc(current,pc,requestId)
+                if(account?.id==current.id)refreshPcWork(pc)
+            }catch(e:Exception){
+                error=e.message?:"이미 시작한 작업은 PC에서 직접 확인해 주세요."
+            }finally { pcBusy=false }
         }
     }
 
