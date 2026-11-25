@@ -1,4 +1,5 @@
 import {cloud,type CloudAccount} from './cloud';
+import {workRequest} from './workGateway';
 export const GOOGLE_TOOLS=['gmail_recent','calendar_upcoming','drive_recent'] as const;
 export type GoogleTool=typeof GOOGLE_TOOLS[number];
 export const isGoogleTool=(x:unknown):x is GoogleTool=>GOOGLE_TOOLS.includes(x as GoogleTool);
@@ -16,14 +17,14 @@ export function formatGoogleResult(operation:GoogleTool,items:any[]){
 
 export type GoogleJob={id:string;operation:GoogleTool;status:'queued'|'running'|'awaiting_auth'|'completed'|'failed'|'cancelled';items?:any[];error?:string;createdAt:number;updatedAt:number};
 export async function submitGoogleJob(a:CloudAccount,id:string,operation:GoogleTool):Promise<GoogleJob>{
- return cloud('/v1/assistant/google/jobs',{id,operation},a.token);
+ return workRequest(a,'google','start',{id,operation},'/v1/assistant/google/jobs',{id,operation});
 }
 export async function googleJobs(a:CloudAccount):Promise<GoogleJob[]>{
  const r=await cloud('/v1/assistant/google/jobs',undefined,a.token);
  if(!Array.isArray(r.jobs))throw Error('Google 작업 상태를 확인할 수 없습니다.');
  return r.jobs.filter((j:any)=>typeof j?.id==='string'&&isGoogleTool(j.operation)&&['queued','running','awaiting_auth','completed','failed','cancelled'].includes(j.status));
 }
-export async function cancelGoogleJob(a:CloudAccount,id:string){return cloud('/v1/assistant/google/jobs/cancel',{id},a.token)}
+export async function cancelGoogleJob(a:CloudAccount,id:string){return workRequest(a,'google','cancel',{id},'/v1/assistant/google/jobs/cancel',{id})}
 export function googleJobMessage(j:GoogleJob){
  const title=toolLabels[j.operation];
  const text=j.status==='completed'&&Array.isArray(j.items)?formatGoogleResult(j.operation,j.items):j.status==='awaiting_auth'?title+' · Google 연결이 필요합니다. 인증하면 자동으로 이어서 처리합니다.':j.status==='failed'?title+' · '+(j.error||'작업 실패'):j.status==='cancelled'?title+' · 작업 취소됨':title+' · 백그라운드에서 처리 중입니다.';
