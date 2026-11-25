@@ -298,8 +298,11 @@ private fun ChatScreen(
     var showPcSheet by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
     LaunchedEffect(vm.account?.id) {
+        var tick = 0
         while (vm.account != null) {
             vm.refreshJobs()
+            if (tick % 4 == 0) vm.refreshMail()
+            tick++
             delay(15_000)
         }
     }
@@ -376,7 +379,10 @@ private fun ChatScreen(
                 }
             }
             items(vm.messages) { message -> MessageBubble(message,vm.profile) }
-            items(vm.pendingErrands,key={ "errand:" + it.id }) { errand ->
+            val visibleErrands=vm.pendingErrands.filter { draft ->
+                draft.state != "submitted" || vm.jobs.none { it.id == draft.id }
+            }
+            items(visibleErrands,key={ "errand:" + it.id }) { errand ->
                 PreparedErrandBubble(
                     draft=errand,busy=vm.sendingErrandId!=null,
                     onStart={vm.approveErrand(errand.id)},
@@ -387,7 +393,7 @@ private fun ChatScreen(
             }
             val activeJobs=vm.jobs.filter {
                 it.status in setOf("queued","running","awaiting_human",
-                    "awaiting_approval","awaiting_file","submitting")
+                    "awaiting_approval","awaiting_file","needs_review","submitting")
             }.take(3)
             if(activeJobs.isNotEmpty()) item("active-header") {
                 Text("진행 중인 심부름",color=Secondary,fontSize=12.sp,
@@ -405,7 +411,7 @@ private fun ChatScreen(
                         Text(when(work.status) {
                             "awaiting_human" -> "인증이 필요해요"
                             "awaiting_file" -> "파일을 기다리고 있어요"
-                            "awaiting_approval" -> "확인이 필요해요"
+                            "awaiting_approval", "needs_review" -> "확인이 필요해요"
                             else -> "처리하고 있어요"
                         },fontSize=12.sp,color=Accent)
                     }
