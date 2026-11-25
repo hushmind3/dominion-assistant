@@ -73,3 +73,13 @@ The Cloud menu endpoint `GET /v1/assistant/work/ui` returns versioned JSON for *
 - Local reminders use Android WorkManager, not Firebase: schedule, list and cancel, with on-device notifications and Android 13+ consent. Delivery is **inexact** under power management.
 - **Legacy Expo chat remains stored in Expo's private SQLite**, not automatically shared with the native app. PC task history is synchronized from the PC; this is not full Expo chat sync.
 - Native APK build workflow is **manual dispatch only**. Source-only UI changes have not triggered a build. Device-level microphone, camera, FCM or PC network operation remains unverified.
+
+## Conversation-driven errands, email and PDF delivery (2026-11-25)
+
+- The existing Cloud chat completion now yields validated proposals for read-only Google queries, HTTPS browser tasks, web search, mail-watch subscriptions and missing-information questions. All visible requests originate from normal chat or the expanded in-call chat. Unsupported actions are rejected rather than executed.
+- Browser, Google and mail-watch proposals are saved per-account in SQLite (database version 5) and require an explicit user tap before submission. The generated request ID remains stable; unclear network outcomes are checked by ID/status rather than replaying actions blindly. Existing conversation and profile tables are upgraded without dropping rows.
+- Cloud browser/Google status polling populates concise in-thread errand updates and records terminal results **once** into the same account's conversation. Cloud mail-watch alerts are mirrored into the same thread with account-scoped duplicate suppression.
+- Browser jobs' PDF metadata can be shown directly in chat and the work sheet. Downloads reuse the existing Cloud browser/document API and validate returned document ID, MIME, size, PDF signature and SHA-256 digest before Android FileProvider sharing. Site PDF (original) and printed page PDF (page) remain clearly distinguished.
+- The plus action menu and contextual work sheets remain reachable while an active voice call is connected, with the existing 0/50/100% swipe-up chat interaction intact.
+- Existing Cloud browser limits, per-site approval/handoff behavior, incomplete full-conversation sync, device-dependent voice/FCM behavior and missing general-purpose autonomous multi-tool workflow still apply. **Hometax end-to-end registration and receipt/PDF issuance have NOT been proven.**
+- This is a **source-only prototype** of the native integration. Android Gradle compilation, unit tests, real device testing, real Google/Firebase/Cloud integration, APK packaging and deployment were **not executed in this change**. Native build workflow remains manual-only; no branch was merged to main.
