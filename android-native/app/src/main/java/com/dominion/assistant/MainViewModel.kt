@@ -346,9 +346,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             MailFilter(intent.mode,intent.sender,intent.keyword))
                     else -> throw IllegalArgumentException("지원하지 않는 심부름입니다.")
                 }
-                withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
+                if (draft.intent is AssistantIntent.MailWatch) {
+                    withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
+                } else {
+                    withContext(Dispatchers.IO) {
+                        history.updateErrandState(current.id, draft.id, "submitted")
+                    }
+                }
                 if (account?.id == current.id) {
-                    pendingErrands = pendingErrands.filterNot { it.id == id }
+                    pendingErrands = if (draft.intent is AssistantIntent.MailWatch)
+                        pendingErrands.filterNot { it.id == id }
+                    else pendingErrands.map {
+                        if(it.id == id) it.copy(state="submitted") else it
+                    }
                     val note = if (draft.intent is AssistantIntent.MailWatch)
                         "메일 알림을 설정했어요." else
                         "심부름을 접수했어요. 진행 상태는 대화창에서 확인할 수 있어요."
@@ -360,7 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 if (account?.id == current.id) {
                     val definitelyRejected = e is CloudError &&
-                        e.statusCode in setOf(400, 401, 403, 404, 409, 413, 429)
+                        e.statusCode in setOf(400, 401, 403, 404, 413, 429)
                     if (!definitelyRejected) {
                         withContext(Dispatchers.IO) {
                             history.updateErrandState(current.id, id, "unknown")
@@ -401,8 +411,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (account?.id != current.id) return@launch
                 if (verified) {
-                    withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
-                    pendingErrands = pendingErrands.filterNot { it.id == id }
+                    withContext(Dispatchers.IO) {
+                        if (draft.intent is AssistantIntent.MailWatch)
+                            history.deleteErrand(current.id, draft.id)
+                        else history.updateErrandState(current.id, draft.id, "submitted")
+                    }
+                    pendingErrands = if (draft.intent is AssistantIntent.MailWatch)
+                        pendingErrands.filterNot { it.id == id }
+                    else pendingErrands.map {
+                        if(it.id == id) it.copy(state="submitted") else it
+                    }
+                    refreshJobs()
                 } else {
                     error = "아직 서버에서 접수 기록을 찾지 못했어요. 중복 제출을 막기 위해 다시 보내지 않았습니다."
                 }
@@ -797,7 +816,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val list = repository.jobs(current)
-                if (account?.id == current.id) jobs = list
+                if (account?.id == current.id) {
+                    jobs = list
+                    val results = list.filter {
+                        it.status in setOf("completed", "failed", "cancelled", "needs_review")
+                    }.associateBy { it.id }
+                    for (draft in pendingErrands.filter { it.state == "submitted" }) {
+                        val outcome = results[draft.id] ?: continue
+                        val note = when (outcome.status) {
+                            "completed" -> "✅ 심부름 완료: " + outcome.title
+                            "failed" -> "⚠️ 심부름 실패: " + outcome.title
+                            "cancelled" -> "심부름 취소: " + outcome.title
+                            else -> "확인이 필요한 심부름: " + outcome.title
+                        } + if(outcome.detail.isBlank()) "" else "\n" + outcome.detail.take(800)
+                        val recorded = withContext(Dispatchers.IO) {
+                            history.completeErrand(current.id, draft.id, note)
+                        }
+                        if (account?.id != current.id) break
+                        pendingErrands = pendingErrands.filterNot { it.id == draft.id }
+                        if (recorded) {
+                            messages = messages + ChatLine(
+                                "assistant", note, System.currentTimeMillis()
+                            )
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 error = e.message ?: "업무 목록 조회 실패"
             } finally {
