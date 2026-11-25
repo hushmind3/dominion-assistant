@@ -418,6 +418,42 @@ private fun ChatScreen(
                     }
                 }
             }
+            // Deliver verified server artifacts in the same conversation, including mid-call.
+            val recentDocs = vm.jobs.filter { it.kind=="browser" }
+                .flatMap { work ->
+                    work.documents.filter { it.expiresAt > System.currentTimeMillis() }
+                        .map { document -> work to document }
+                }.take(3)
+            items(recentDocs,key={"pdf:"+it.first.id+":"+it.second.id}) { (work,doc) ->
+                Surface(
+                    onClick={
+                        vm.shareWorkDocument(work,doc) { uri ->
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/pdf"
+                                putExtra(Intent.EXTRA_STREAM,uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(send,"PDF 저장 또는 공유"))
+                        }
+                    },
+                    color=Panel,shape=RoundedCornerShape(14.dp),
+                    modifier=Modifier.fillMaxWidth().padding(start=36.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal=15.dp,vertical=11.dp),
+                        verticalAlignment=Alignment.CenterVertically,
+                        horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                        Text("📄",fontSize=22.sp)
+                        Column(Modifier.weight(1f)) {
+                            Text(if(doc.kind=="original") "원본 PDF 받기" else "화면 PDF 받기",
+                                fontSize=14.sp,color=Color(0xFFF4F7F9))
+                            Text(if(doc.kind=="original") work.title.take(55)
+                                else "사이트 화면 사본 · 공식 발급 원본 아님",
+                                fontSize=11.sp,color=Secondary,maxLines=2)
+                        }
+                        Text("공유",color=Accent,fontSize=12.sp)
+                    }
+                }
+            }
         }
         if(voice.status!="음성 대기"&&!calling) {
             Text(voice.status,color=Secondary,fontSize=11.sp,
