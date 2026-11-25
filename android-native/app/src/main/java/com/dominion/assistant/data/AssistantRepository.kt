@@ -15,6 +15,15 @@ data class PcTurn(val requestId: String, val text: String, val status: String,
                   val attachmentName: String? = null, val error: String? = null)
 data class InboxMessage(val id: String, val deviceId: String,
                         val text: String, val time: Long)
+data class MailFilter(val mode:String="important",val sender:String="",val keyword:String="")
+data class MailStatus(val enabled:Boolean=false,val state:String="disabled",
+                      val filters:MailFilter=MailFilter(),val error:String?=null,
+                      val nextCheck:Long=0L)
+data class MailAlert(val id:String,val from:String,val subject:String,
+                     val time:Long,val category:String,val important:Boolean)
+data class SearchSource(val title:String,val url:String,val description:String,
+                        val date:String)
+
 data class WorkItem(
     val id: String, val kind: String, val status: String,
     val title: String, val detail: String, val updatedAt: Long,
@@ -147,6 +156,64 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
             val text=row.optString("text")
             if(id.length !in 1..160 || text.isBlank() || text.length>2000)return@mapNotNull null
             InboxMessage(id,deviceId,text,row.optLong("time"))
+        }
+    }
+
+    suspend fun mailStatus(account:Account):MailStatus {
+        val data=api.get("/v1/assistant/mail/status",account.token)
+        val f=data.optJSONObject("filters") ?: JSONObject()
+        return MailStatus(data.optBoolean("enabled"),data.optString("state","disabled"),
+            MailFilter(f.optString("mode","important"),f.optString("sender"),
+                f.optString("keyword")),
+            data.optString("error").ifBlank{null},data.optLong("nextCheck"))
+    }
+
+    suspend fun mailAlerts(account:Account):List<MailAlert> {
+        val data=api.get("/v1/assistant/mail/alerts",account.token)
+        val rows=data.optJSONArray("alerts")?:JSONArray()
+        return (0 until minOf(rows.length(),100)).mapNotNull{i->
+            val row=rows.optJSONObject(i)?:return@mapNotNull null
+            val id=row.optString("id");if(id.length !in 1..200)return@mapNotNull null
+            MailAlert(id,row.optString("from").take(300),
+                row.optString("subject").take(300),row.optLong("time"),
+                row.optString("category").take(30),row.optBoolean("important"))
+        }
+    }
+
+    suspend fun startMail(account:Account,filter:MailFilter) {
+        require(filter.mode in setOf("all","important","matched"))
+        require(filter.sender.length<=160&&filter.keyword.length<=100)
+        require(filter.mode!="matched"||filter.sender.isNotBlank()||filter.keyword.isNotBlank())
+        api.post("/v1/assistant/mail/start",obj("confirmed" to true,
+            "mode" to filter.mode,"sender" to filter.sender.trim(),
+            "keyword" to filter.keyword.trim()),account.token)
+    }
+    suspend fun stopMail(account:Account) {
+        api.post("/v1/assistant/mail/stop",obj(),account.token)
+    }
+    suspend fun checkMail(account:Account) {
+        api.post("/v1/assistant/mail/check",obj(),account.token)
+    }
+    suspend fun clearMailAlerts(account:Account) {
+        api.post("/v1/assistant/mail/clear",obj(),account.token)
+    }
+
+    suspend fun searchWeb(account:Account,query:String):List<SearchSource> {
+        val clean=query.trim()
+        require(clean.isNotBlank()&&clean.length<=1024)
+        val data=api.post("/v1/assistant/search",
+            obj("query" to clean,"limit" to 5),account.token)
+        val rows=data.optJSONArray("items")?:JSONArray()
+        return (0 until minOf(rows.length(),10)).mapNotNull{i->
+            val row=rows.optJSONObject(i)?:return@mapNotNull null
+            val url=row.optString("url")
+            val uri=runCatching{java.net.URI(url)}.getOrNull()
+                ?:return@mapNotNull null
+            if(uri.scheme !in setOf("https","http")||uri.host.isNullOrBlank()||
+                uri.rawUserInfo!=null||url.length>2048)return@mapNotNull null
+            SearchSource(row.optString("title").take(240),
+                url,row.optString("description").take(700),
+                row.optString("date").take(80))
         }
     }
 
