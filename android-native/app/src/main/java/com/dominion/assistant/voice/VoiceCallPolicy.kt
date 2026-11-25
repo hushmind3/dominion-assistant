@@ -12,7 +12,7 @@ data class VoicePairing(val url:String,val token:String,val room:String,val expi
   fun validate(url:String,token:String,room:String,exp:Long,
     now:Long=System.currentTimeMillis()):VoicePairing {
    val u=URI(url)
-   require(u.scheme=="wss"&&!u.host.isNullOrBlank()&&u.rawUserInfo==null&&u.port==-1&&u.host!="localhost"&&!u.host.endsWith(".local")&&u.host!="127.0.0.1"){"Invalid WebRTC URL"}
+   require(u.scheme=="wss"&&!u.host.isNullOrBlank()&&u.rawUserInfo==null&&u.rawQuery==null&&u.rawFragment==null&&u.port!=0&&u.host!="localhost"&&!u.host.endsWith(".local")&&u.host!="127.0.0.1"){"Invalid WebRTC URL"}
    require(token.length in 24..8192&&token.split('.').size==3&&token.all{it.isLetterOrDigit()||it in "._-"}){"Invalid LiveKit token"}
    require(Regex("^dominion-[a-f0-9]{32}$").matches(room)){"Invalid room"}
    require(exp*1000>now+5000&&exp*1000<now+600_000){"Pairing expired"}
