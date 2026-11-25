@@ -245,7 +245,8 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
         require(model.isNotBlank() && model.length <= 150)
         val entries = JSONArray()
         entries.put(obj("role" to "system", "content" to
-            PersonaPrompt.system(profile, lines.lastOrNull { it.role == "user" }?.text.orEmpty())))
+            PersonaPrompt.system(profile, lines.lastOrNull { it.role == "user" }?.text.orEmpty()) +
+                "\n" + AssistantTaskIntent.systemGuide))
         for (line in lines.takeLast(18)) {
             if (line.role == "user" || line.role == "assistant") {
                 entries.put(obj("role" to line.role, "content" to line.text.take(8000)))
@@ -277,21 +278,23 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
         api.post(legacyPath, legacy, account.token)
     }
 
-    suspend fun google(account: Account, operation: String) {
+    suspend fun google(account: Account, operation: String,
+                       id: String = java.util.UUID.randomUUID().toString()) {
         require(operation in setOf("gmail_recent", "calendar_upcoming", "drive_recent"))
-        val id = java.util.UUID.randomUUID().toString()
+        require(java.util.UUID.fromString(id).toString() == id)
         postWork(
             account, obj("kind" to "google", "id" to id, "operation" to operation),
             "/v1/assistant/google/jobs", obj("id" to id, "operation" to operation)
         )
     }
 
-    suspend fun browser(account: Account, url: String, goal: String) {
+    suspend fun browser(account: Account, url: String, goal: String,
+                        id: String = java.util.UUID.randomUUID().toString()) {
         val parsed = WorkInputPolicy.officialHttps(url)
         require(parsed != null && goal.trim().isNotBlank() && goal.length <= 4000) {
             "공식 HTTPS 사이트와 업무 내용을 확인해 주세요."
         }
-        val id = java.util.UUID.randomUUID().toString()
+        require(java.util.UUID.fromString(id).toString() == id)
         val body = obj("id" to id, "url" to parsed,
             "goal" to goal.trim(), "confirmed" to true, "remember" to false)
         postWork(account, obj("kind" to "browser", "id" to id,
