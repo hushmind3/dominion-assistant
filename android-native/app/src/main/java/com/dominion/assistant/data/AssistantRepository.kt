@@ -34,7 +34,9 @@ data class WorkItem(
     val title: String, val detail: String, val updatedAt: Long,
     val approvalId: String? = null, val approvalLabel: String? = null,
     val approvalPreview: String? = null,
-    val documents: List<BrowserDocument> = emptyList()
+    val documents: List<BrowserDocument> = emptyList(),
+    val resultUrl: String? = null,
+    val evidence: String? = null
 )
 class AssistantRepository(private val api: CloudApi = CloudApi()) {
     private fun obj(vararg pairs: Pair<String, Any?>): JSONObject = JSONObject().apply {
@@ -367,7 +369,9 @@ class AssistantRepository(private val api: CloudApi = CloudApi()) {
             approval?.optString("id")?.takeIf {
                 Regex("^[a-zA-Z0-9_-]{8,80}$").matches(it)
             }, approval?.optString("label")?.take(140),
-            approval?.optString("preview")?.take(900), docs)
+            approval?.optString("preview")?.take(900), docs,
+            result?.optString("url")?.let { WorkInputPolicy.officialHttps(it) },
+            result?.optString("evidence")?.take(700)?.takeIf { it.isNotBlank() })
     }
 
     suspend fun googleConnect(account: Account): String {
