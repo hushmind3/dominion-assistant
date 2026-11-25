@@ -1,5 +1,7 @@
 # 도미니온 — Android native client
 
+> Main development target: this Kotlin/Compose client is now in `dominion-assistant/main`. `mobile/` is retained only as an Expo UI/UX reference until feature and visual parity are checked. Native source has not yet passed an APK build or device validation.
+
 This is a **standalone Android SDK + Kotlin + Jetpack Compose** application, not an Expo prebuild or a WebView. It has its own application ID (`com.dominion.assistant`) and can be installed alongside the existing `com.dominion.voice` React Native client.
 
 ## Toolchain (2026-11-25)
@@ -45,7 +47,7 @@ The client does not evaluate server-supplied JavaScript. A future server-driven 
 - Android tap-to-talk speech recognition requires foreground UI. Separately, an **active user-started LiveKit call** uses a microphone-type foreground service and may continue when the screen is locked. Starting a microphone foreground service from background is not attempted.
 - Android 13+ notification permission is requested at call start; denial does not authorize background service creation. Platform battery controls and OEM policies may still terminate calls.
 - Incoming remote PC voice-start/stop commands never automatically retry after an uncertain RPC outcome. Call-end attempts best-effort PC stop once.
-- The old `mobile/` app and its APK workflow remain untouched. The `main` branch and production deployment remain unchanged.
+- The old `mobile/` Expo UI is preserved for comparison only; native development is based on `main`. Production deployment remains unchanged.
 
 References: https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler ; https://developer.android.com/develop/background-work/services/fgs/service-types ; https://docs.livekit.io/transport/sdk-platforms/android/ ; https://github.com/livekit/client-sdk-android/releases/tag/v2.31.0
 

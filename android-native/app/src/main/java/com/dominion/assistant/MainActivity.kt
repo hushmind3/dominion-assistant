@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,10 +50,10 @@ import com.dominion.assistant.data.RemotePc
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.delay
 
-private val Forest = Color(0xFF0F151A)
-private val Panel = Color(0xFF202A30)
-private val Accent = Color(0xFF9EE9D0)
-private val Secondary = Color(0xFF9DADB4)
+private val Forest = Color(0xFF111815)
+private val Panel = Color(0xFF1D2722)
+private val Accent = Color(0xFFA5D5A1)
+private val Secondary = Color(0xFFA4B5AA)
 
 class MainActivity : ComponentActivity() {
     var openVoiceEvent by mutableIntStateOf(0)
@@ -116,17 +117,17 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
         drawerContent={
             if(vm.account!=null) {
                 ModalDrawerSheet(
-                    drawerContainerColor=Color(0xFF172127),
+                    drawerContainerColor=Color(0xFF1D2722),
                     modifier=Modifier.width(292.dp)
                 ) {
                     Column(Modifier.fillMaxWidth().padding(start=22.dp,end=18.dp,
                         top=28.dp,bottom=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         AssistantAvatarView(vm.profile,52.dp)
                         Text(vm.profile.name, fontSize=21.sp,
-                            fontWeight=FontWeight.SemiBold,color=Color(0xFFF2F7F2))
+                            fontWeight=FontWeight.SemiBold,color=Color(0xFFEFF5F0))
                         Text("내 곁의 비서",color=Secondary,fontSize=12.sp)
                     }
-                    HorizontalDivider(color=Color(0xFF304047))
+                    HorizontalDivider(color=Color(0xFF35443B))
                     listOf(
                         Triple(0,"대화","◌"),
                         Triple(2,"통화","☎"),
@@ -142,15 +143,15 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                             },
                             modifier=Modifier.padding(horizontal=12.dp,vertical=3.dp),
                             colors=NavigationDrawerItemDefaults.colors(
-                                selectedContainerColor=Color(0xFF28463E),
-                                selectedTextColor=Color(0xFFD0F2E7),
-                                unselectedTextColor=Color(0xFFDDE5E9)
+                                selectedContainerColor=Color(0xFF294638),
+                                selectedTextColor=Color(0xFFEFF5F0),
+                                unselectedTextColor=Color(0xFFEFF5F0)
                             )
                         )
                     }
                     Spacer(Modifier.weight(1f))
                     Text("DOMINION · Android",modifier=Modifier.padding(22.dp),
-                        color=Color(0xFF74897B),fontSize=11.sp)
+                        color=Color(0xFFA4B5AA),fontSize=11.sp)
                 }
             }
         }
@@ -167,15 +168,20 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                     ) {
                         if(vm.account!=null) {
                             IconButton(onClick={scope.launch{drawer.open()}}) {
-                                Text("☰",fontSize=22.sp,color=Color(0xFFD9E6DC))
+                                Text("☰",fontSize=22.sp,color=Color(0xFFEFF5F0))
                             }
                         }
-                        AssistantAvatarView(vm.profile,36.dp)
-                        Column(Modifier.weight(1f)) {
-                            Text("도미니온",fontWeight=FontWeight.SemiBold,
-                                fontSize=18.sp,color=Color(0xFFF2F7F2))
-                            Text(if(vm.account==null)"나의 AI 비서" else "언제든 말 걸어주세요",
-                                color=Secondary,fontSize=11.sp)
+                        IconButton(onClick={page=3},modifier=Modifier.size(40.dp)) {
+                            AssistantAvatarView(vm.profile,36.dp)
+                        }
+                        Row(
+                            Modifier.weight(1f).clickable { page=3 },
+                            verticalAlignment=Alignment.CenterVertically
+                        ) {
+                            Text(vm.profile.name,fontWeight=FontWeight.SemiBold,
+                                fontSize=18.sp,color=Color(0xFFEFF5F0),
+                                maxLines=1,overflow=TextOverflow.Ellipsis)
+                            Text(" ✎",color=Secondary,fontSize=18.sp)
                         }
                         if(vm.account!=null) {
                             IconButton(onClick={page=2}) {
@@ -185,7 +191,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                         if(vm.busy)CircularProgressIndicator(
                             Modifier.size(18.dp),strokeWidth=2.dp,color=Accent)
                     }
-                    HorizontalDivider(color=Color(0xFF2D3940),thickness=.5.dp)
+                    HorizontalDivider(color=Color(0xFF35443B),thickness=.5.dp)
                 }
             }
         ) { pad ->
@@ -372,7 +378,7 @@ private fun ChatScreen(
                     AssistantAvatarView(vm.profile,if(inVoiceSheet)48.dp else 74.dp)
                     Spacer(Modifier.height(5.dp))
                     Text("무엇을 도와드릴까요?",
-                        color=Color(0xFFF2F5F0),
+                        color=Color(0xFFEFF5F0),
                         fontSize=if(inVoiceSheet)19.sp else 24.sp,
                         fontWeight=FontWeight.SemiBold)
                     Text("이야기부터 심부름까지, 편하게 말씀하세요.",
@@ -407,7 +413,7 @@ private fun ChatScreen(
                     modifier=Modifier.fillMaxWidth().padding(start=36.dp)
                 ){
                     Column(Modifier.padding(horizontal=15.dp,vertical=10.dp)) {
-                        Text(work.title,fontSize=14.sp,color=Color(0xFFEDF5F5),
+                        Text(work.title,fontSize=14.sp,color=Color(0xFFEFF5F0),
                             maxLines=2)
                         Text(when(work.status) {
                             "awaiting_human" -> "인증이 필요해요"
@@ -445,7 +451,7 @@ private fun ChatScreen(
                         Text("📄",fontSize=22.sp)
                         Column(Modifier.weight(1f)) {
                             Text(if(doc.kind=="original") "원본 PDF 받기" else "화면 PDF 받기",
-                                fontSize=14.sp,color=Color(0xFFF4F7F9))
+                                fontSize=14.sp,color=Color(0xFFEFF5F0))
                             Text(if(doc.kind=="original") work.title.take(55)
                                 else "사이트 화면 사본 · 공식 발급 원본 아님",
                                 fontSize=11.sp,color=Secondary,maxLines=2)
@@ -480,14 +486,14 @@ private fun ChatScreen(
                     value=draft,
                     onValueChange={onDraftChange(it.take(8000))},
                     modifier=Modifier.weight(1f).padding(vertical=11.dp,horizontal=8.dp),
-                    textStyle=TextStyle(color=Color(0xFFF4F7F9),fontSize=15.sp),
+                    textStyle=TextStyle(color=Color(0xFFEFF5F0),fontSize=15.sp),
                     cursorBrush=androidx.compose.ui.graphics.SolidColor(Accent),
                     minLines=1,maxLines=4,
                     decorationBox={input->
                         Box {
                             if(draft.isEmpty())
                                 Text(if(calling)"통화 중 메시지 입력" else "무엇이든 말씀하세요",
-                                    color=Color(0xFF93A3AC),fontSize=14.sp)
+                                    color=Color(0xFFA4B5AA),fontSize=14.sp)
                             input()
                         }
                     }
@@ -525,7 +531,7 @@ private fun ChatScreen(
     if(showActions) {
         ModalBottomSheet(
             onDismissRequest={showActions=false},
-            containerColor=Color(0xFF1C272D)
+            containerColor=Color(0xFF1D2722)
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal=18.dp,vertical=8.dp),
                 verticalArrangement=Arrangement.spacedBy(5.dp)) {
@@ -554,7 +560,7 @@ private fun ChatScreen(
                             verticalAlignment=Alignment.CenterVertically,
                             horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                             Text(glyph,color=Accent,fontSize=23.sp)
-                            Text(label,color=Color(0xFFEAF2F4),fontSize=15.sp)
+                            Text(label,color=Color(0xFFEFF5F0),fontSize=15.sp)
                         }
                     }
                 }
@@ -634,7 +640,7 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
             Column(Modifier.fillMaxWidth().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(92.dp).background(Color(0xFF2E5B53), CircleShape),
+                Box(Modifier.size(92.dp).background(Color(0xFF294638), CircleShape),
                     contentAlignment = Alignment.Center) {
                     Text("✦", color = Accent, fontSize = 62.sp)
                 }
@@ -740,7 +746,7 @@ private fun PreparedErrandBubble(
     onShow: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Bottom) {
-        Box(Modifier.size(28.dp).background(Color(0xFF26383E),CircleShape),
+        Box(Modifier.size(28.dp).background(Color(0xFF294638),CircleShape),
             contentAlignment=Alignment.Center) {
             Text("✦",color=Accent,fontSize=15.sp)
         }
@@ -749,7 +755,7 @@ private fun PreparedErrandBubble(
             modifier=Modifier.weight(1f)) {
             Column(Modifier.padding(horizontal=15.dp,vertical=13.dp),
                 verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text(draft.title,color=Color(0xFFF0F5F5),
+                Text(draft.title,color=Color(0xFFEFF5F0),
                     fontSize=15.sp,fontWeight=FontWeight.SemiBold)
                 Text(draft.summary,color=Secondary,fontSize=13.sp,
                     lineHeight=19.sp,maxLines=8)
@@ -796,12 +802,12 @@ private fun MessageBubble(message: ChatLine, profile: AssistantProfile) {
             }
             Surface(
                 modifier=Modifier.widthIn(max=304.dp),
-                color=if(mine)Color(0xFF2E5B53) else Panel,
+                color=if(mine)Color(0xFF294638) else Panel,
                 shape=if(mine)RoundedCornerShape(18.dp,18.dp,5.dp,18.dp)
                       else RoundedCornerShape(18.dp,18.dp,18.dp,5.dp)
             ) {
                 Text(message.text,Modifier.padding(horizontal=15.dp,vertical=11.dp),
-                    color=Color(0xFFF0F6F5),fontSize=15.sp,lineHeight=22.sp)
+                    color=Color(0xFFEFF5F0),fontSize=15.sp,lineHeight=22.sp)
             }
         }
     }

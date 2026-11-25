@@ -1,5 +1,12 @@
 # DOMINION Assistant
 
+## Android app — canonical main implementation (2026-11-25)
+
+- Develop the **Android-native Kotlin + Jetpack Compose** client in `android-native/` on **`main`**. Do not create separate branches for routine assistant development.
+- The previous Expo app in `mobile/` is a **read-only UI/UX reference**, not the shipping Android client. Preserve its established colors, user-editable identity, layout, navigation, gesture behavior and flows when porting to Compose. No independent redesign or arbitrary color palette.
+- The native source was fast-forwarded from the previous Android prototype. **Compilation, device testing, authenticated Google/browser/PC jobs and real calls are still unverified.** Do not advertise end-to-end completion.
+- Reuse approved existing Cloud/PC execution adapters; keep source changes in `main` and validate each feature before removing legacy reference code. Maintain no duplicate task engines.
+
 Independent personal AI assistant development repository. Migrated from dominion-rust / dominion-sub3 at commit `a05d47cc07ccc9ef3f0086e9078d305ef7e22b4a`.
 
 - Root: existing Python voice service, web interface, LiveKit/Pipecat and SIP integration, Dockerfile, protocol tests.
@@ -119,7 +126,7 @@ When the browser agent finds a supported visible empty file input, the chat offe
 The side menu and conversation support opt-in new email monitoring: all new inbox mail, Gmail IMPORTANT, or literal sender/subject conditions. The companion Cloud branch checks Gmail history at its existing 15-minute cron (no model calls), stores encrypted metadata alerts, and emits generic opt-in push notifications. The app merges alerts into the same conversation with stable mail IDs, and also refreshes cloud tasks when push arrives. Starting a watch creates a fresh baseline; expired history requires an explicit restart. The app does not change Gmail labels, delete, archive or send mail. Configure migration 0008, Google OAuth and optional Expo push credentials. Production and real account testing remain pending.
 
 
-### Shared mobile task contract (feature branch: `assistant-task-kernel`)
+### Shared mobile task contract (legacy Expo reference)
 Browser Run and Google read jobs now enter the Messenger through `mobile/taskKernel.ts`, with a common prepared-job record and a common reconciliation path in `mobile/taskReconcile.ts`. Each Cloud endpoint remains the authority for execution and its own permissions; this change does **not** move execution into the phone or replace the separate backend workers. The account-local SQLite journal retains each job's server revision and refuses stale status updates after reconnect. Previously successful web tasks are also deduplicated in a local **성공한 업무 다시 사용** list (`mobile/workLibrary.ts`). A successful web task exposes **이 업무 다시 맡기기**: it fills a fresh job from the previous verified URL and goal, with a new ID and the same explicit start/approval flow. It does not replay authenticated clicks, upload files, or silently retain credentials. No Pickle code or assets are copied.
 
 Run source regressions with `cd mobile && node --test tests/*.test.mjs`; native type checking requires installed Expo dependencies (`npm run typecheck`). Server-side generic orchestration, step-by-step reusable playbooks, dynamic forms, native background calls and deployment remain separate follow-ups.
