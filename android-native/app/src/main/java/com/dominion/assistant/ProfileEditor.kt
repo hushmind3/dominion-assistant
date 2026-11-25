@@ -40,6 +40,7 @@ fun ProfileEditor(vm: MainViewModel) {
     var avatar by rememberSaveable(accountId) { mutableStateOf(vm.profile.avatar) }
     var photo by rememberSaveable(accountId) { mutableStateOf(vm.profile.photo) }
     var photoError by remember { mutableStateOf("") }
+    var saved by remember(accountId) { mutableStateOf(false) }
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     val choosePhoto=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -53,7 +54,6 @@ fun ProfileEditor(vm: MainViewModel) {
             }
         }
     }
-    var saved by remember(accountId) { mutableStateOf(false) }
     var pcConfirm by remember { mutableStateOf(false) }
     val selectedPc = vm.pcs.firstOrNull { it.id == vm.selectedPcId && it.online }
     Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF23392B))) {

@@ -68,13 +68,18 @@ data class AssistantProfile(
 object PersonaPrompt {
     fun system(profile: AssistantProfile, question: String): String {
         val p = profile.validated()
-        val words = Regex("[\\p{L}\\p{N}]{2,}")
-            .findAll(question.lowercase()).map { it.value }.toSet()
-        val rankedNotes = p.notes.mapIndexed { i, note ->
+        val words = Regex("[\\p{L}\\p{N}]+")
+            .findAll(question.lowercase()).map { it.value }
+            .filter { it.length >= 2 || it.any { c -> c in '\\uac00'..'\\ud7a3' } }
+            .toSet()
+        val ranked = p.notes.mapIndexed { i, note ->
             val matching = words.count { note.lowercase().contains(it) }
             Triple(i, note, matching)
         }.sortedWith(compareByDescending<Triple<Int, String, Int>> { it.third }
-            .thenBy { it.first }).take(8).map { it.second }
+            .thenBy { it.first })
+        val related = ranked.filter { it.third > 0 }
+        val rankedNotes = (if (related.isNotEmpty()) related.take(8)
+                           else ranked.takeLast(3)).map { it.second }
         return buildString {
             append("당신은 DOMINION 개인 AI 비서입니다. 실제로 수행하지 않은 작업이나 검색은 했다고 말하지 마세요.")
             append(" 사용자 지정 이름: ").append(p.name)
