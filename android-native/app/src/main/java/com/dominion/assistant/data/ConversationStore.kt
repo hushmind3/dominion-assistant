@@ -9,7 +9,7 @@ data class ChatLine(val role: String, val text: String, val createdAt: Long)
 
 /** Simple account-isolated local conversation mirror; capped to 200 turns per account. */
 class ConversationStore(context: Context) :
-    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 1) {
+    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE messages (" +
@@ -18,10 +18,40 @@ class ConversationStore(context: Context) :
                 "content TEXT NOT NULL, created_at INTEGER NOT NULL)"
         )
         db.execSQL("CREATE INDEX idx_messages_account ON messages(account_id,id)")
+        createProfiles(db)
+    }
+
+    private fun createProfiles(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS profiles (" +
+            "account_id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Schema migrations must preserve conversations; never drop the table.
+        // Existing conversations are never dropped or rewritten.
+        if (oldVersion < 2) createProfiles(db)
+    }
+
+    fun readProfile(account: String): AssistantProfile {
+        readableDatabase.query("profiles", arrayOf("data"),
+            "account_id=?", arrayOf(account), null, null, null, "1").use { cursor ->
+            if (!cursor.moveToFirst()) return AssistantProfile()
+            return try {
+                AssistantProfile.fromJson(org.json.JSONObject(cursor.getString(0)))
+            } catch (_: Exception) {
+                // Preserve the invalid saved value for manual recovery.
+                AssistantProfile()
+            }
+        }
+    }
+
+    fun saveProfile(account: String, profile: AssistantProfile) {
+        val valid = profile.validated()
+        val values = ContentValues().apply {
+            put("account_id", account)
+            put("data", valid.asJson().toString())
+        }
+        writableDatabase.insertWithOnConflict(
+            "profiles", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
     fun history(account: String): List<ChatLine> {
