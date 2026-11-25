@@ -219,6 +219,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                             activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))
                         })
                         2 -> CallScreen(vm,activity,voice)
+                        4 -> PcChatScreen(vm)
                         else -> SettingsScreen(vm,
                             onAssistantSettings={
                                 runCatching{
@@ -445,8 +446,8 @@ private fun ChatScreen(
                 Text("무엇을 해드릴까요?",modifier=Modifier.padding(start=10.dp,bottom=10.dp),
                     fontSize=19.sp,fontWeight=FontWeight.SemiBold)
                 listOf(
-                    Triple("✦","PC에 부탁하기",1),
-                    Triple("▤","사진·파일",1),
+                    Triple("✦","심부름 맡기기",1),
+                    Triple("▤","PC와 대화·파일",4),
                     Triple("◷","일정·알림",1),
                     Triple("☎","통화",2),
                     Triple("◇","모델 바꾸기",-1),
@@ -673,7 +674,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("진행 중인 업무", Modifier.weight(1f), fontSize = 22.sp,
+            Text("심부름", Modifier.weight(1f), fontSize = 22.sp,
                 fontWeight = FontWeight.Bold)
             TextButton(onClick = vm::refreshJobs, enabled = !vm.loadingJobs) {
                 Text(if (vm.loadingJobs) "확인 중" else "새로고침")
@@ -709,7 +710,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
         }
         Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("브라우저 업무 맡기기", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("웹사이트에서 부탁하기", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 OutlinedTextField(
                     value = site, onValueChange = { site = it.take(2048) },
                     label = { Text("공식 웹사이트 HTTPS 주소") },
@@ -718,7 +719,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
                 )
                 OutlinedTextField(
                     value = goal, onValueChange = { goal = it.take(4000) },
-                    label = { Text("수행할 업무") },
+                    label = { Text("부탁할 내용") },
                     minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth()
                 )
                 Text("사이트의 제출·변경 동작은 서버가 별도로 승인을 요청합니다.",
@@ -727,7 +728,7 @@ private fun WorkScreen(vm: MainViewModel, open: (String) -> Unit) {
                     onClick = { vm.startBrowser(site, goal) },
                     enabled = site.startsWith("https://") && goal.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("내용 확인 후 업무 시작") }
+                ) { Text("내용 확인하고 부탁하기") }
             }
         }
         }
