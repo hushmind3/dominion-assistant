@@ -65,7 +65,8 @@ class VoiceCallService:Service() {
   PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
  private fun notification(muted:Boolean):Notification{
   val open=PendingIntent.getActivity(this,10,Intent(this,MainActivity::class.java)
-   .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+   .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+   .putExtra("dominion_open_voice",true),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
   return Notification.Builder(this,CHANNEL).setSmallIcon(R.drawable.ic_dominion)
    .setContentTitle("DOMINION AI 음성 통화")
    .setContentText(if(muted)"마이크 꺼짐 · 통화 연결 중" else "실시간 음성 대화 중 · 터치해 통화 열기")
