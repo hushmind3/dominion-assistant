@@ -9,7 +9,7 @@ data class ChatLine(val role: String, val text: String, val createdAt: Long)
 
 /** Simple account-isolated local conversation mirror; capped to 200 turns per account. */
 class ConversationStore(context: Context) :
-    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 3) {
+    SQLiteOpenHelper(context, "dominion.native.messages.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE messages (" +
@@ -20,6 +20,7 @@ class ConversationStore(context: Context) :
         db.execSQL("CREATE INDEX idx_messages_account ON messages(account_id,id)")
         createProfiles(db)
         createPcTurns(db)
+        createErrands(db)
     }
 
     private fun createProfiles(db: SQLiteDatabase) {
@@ -36,10 +37,20 @@ class ConversationStore(context: Context) :
             "ON pc_turns(account_id,device_id,created_at,request_id)")
     }
 
+    private fun createErrands(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS prepared_errands (" +
+            "account_id TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL," +
+            " state TEXT NOT NULL, created_at INTEGER NOT NULL," +
+            " PRIMARY KEY(account_id,id))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_prepared_errands_account " +
+            "ON prepared_errands(account_id,created_at)")
+    }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // Existing conversations are never dropped or rewritten.
         if (oldVersion < 2) createProfiles(db)
         if (oldVersion < 3) createPcTurns(db)
+        if (oldVersion < 4) createErrands(db)
     }
 
     fun readProfile(account: String): AssistantProfile {
@@ -167,7 +178,59 @@ class ConversationStore(context: Context) :
         }
     }
 
+    fun errands(account: String): List<PreparedErrand> {
+        val drafts = mutableListOf<PreparedErrand>()
+        readableDatabase.query("prepared_errands",
+            arrayOf("id", "payload", "state", "created_at"), "account_id=?",
+            arrayOf(account), null, null, "created_at DESC", "30").use { rows ->
+            while (rows.moveToNext()) {
+                val id = rows.getString(0)
+                val intent = AssistantTaskIntent.parse(rows.getString(1))
+                val state = rows.getString(2)
+                if (!runCatching { java.util.UUID.fromString(id).toString() == id }
+                        .getOrDefault(false) ||
+                    intent == null || !AssistantTaskIntent.persistable(intent) ||
+                    state !in setOf("ready", "unknown")) continue
+                drafts.add(PreparedErrand(id, intent, rows.getLong(3), state))
+            }
+        }
+        return drafts.asReversed()
+    }
+
+    fun saveErrand(account: String, plan: PreparedErrand) {
+        require(AssistantTaskIntent.persistable(plan.intent))
+        require(plan.state in setOf("ready", "unknown"))
+        require(java.util.UUID.fromString(plan.id).toString() == plan.id)
+        val values = ContentValues().apply {
+            put("account_id", account)
+            put("id", plan.id)
+            put("payload", AssistantTaskIntent.encode(plan.intent))
+            put("state", plan.state)
+            put("created_at", plan.createdAt)
+        }
+        writableDatabase.insertWithOnConflict("prepared_errands", null, values,
+            SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun updateErrandState(account: String, id: String, state: String) {
+        require(state == "ready" || state == "unknown")
+        writableDatabase.update("prepared_errands",
+            ContentValues().apply { put("state", state) },
+            "account_id=? AND id=?", arrayOf(account, id))
+    }
+
+    fun deleteErrand(account: String, id: String) {
+        writableDatabase.delete("prepared_errands", "account_id=? AND id=?",
+            arrayOf(account, id))
+    }
+
     fun clear(account: String) {
-        writableDatabase.delete("messages", "account_id=?", arrayOf(account))
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("messages", "account_id=?", arrayOf(account))
+            db.delete("prepared_errands", "account_id=?", arrayOf(account))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 }
