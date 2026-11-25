@@ -19,6 +19,10 @@ import com.dominion.assistant.data.WorkItem
 import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.voice.VoicePairing
 import com.dominion.assistant.voice.voiceId
+import com.dominion.assistant.voice.VoiceCallState
+import com.dominion.assistant.voice.VoiceCallService
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -122,6 +126,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun signOut() {
         cancelPairing()
         val previous = account
+        val hadCall=VoiceCallState.state.value.phase in setOf("connecting","connected","reconnecting")
         account = null
         messages = emptyList()
         jobs = emptyList()
@@ -130,6 +135,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         selectedModel = ""
         error = ""
         viewModelScope.launch {
+            if(hadCall){
+                VoiceCallService.command(getApplication(),VoiceCallService.STOP)
+                withTimeoutOrNull(9500) {
+                    VoiceCallState.state.first { it.phase=="idle" || it.phase=="error" }
+                }
+            }
             if (previous != null) {
                 try { repository.logout(previous) } catch (_: Exception) {}
                 withContext(Dispatchers.IO) { vault.clear() }
