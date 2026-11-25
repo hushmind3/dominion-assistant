@@ -50,15 +50,19 @@ private val Secondary = Color(0xFFB8D2C0)
 class MainActivity : ComponentActivity() {
     var openVoiceEvent by mutableIntStateOf(0)
         private set
+    var openWorkEvent by mutableIntStateOf(0)
+        private set
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("dominion_open_voice",false)) openVoiceEvent++
+        if (intent.getBooleanExtra("dominion_open_work",false)) openWorkEvent++
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (intent?.getBooleanExtra("dominion_open_voice",false)==true) openVoiceEvent++
+        if (intent?.getBooleanExtra("dominion_open_work",false)==true) openWorkEvent++
         super.onCreate(savedInstanceState)
         val state = ViewModelProvider(this)[MainViewModel::class.java]
         setContent {
@@ -81,6 +85,9 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Comp
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(activity.openVoiceEvent) {
         if (activity.openVoiceEvent>0) tab=2
+    }
+    LaunchedEffect(activity.openWorkEvent) {
+        if(activity.openWorkEvent>0) tab=1
     }
     var showSignOut by remember { mutableStateOf(false) }
     Scaffold(
@@ -617,6 +624,10 @@ private fun SettingsScreen(
     onSignOut: () -> Unit
 ) {
     var eraseHistory by remember { mutableStateOf(false) }
+    val context=LocalContext.current
+    val pushPermission=rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ){granted-> if(granted)vm.enablePush() }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -624,6 +635,28 @@ private fun SettingsScreen(
         Text("설정", fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("계정 · " + (vm.account?.id?.take(18) ?: ""),
             color = Secondary, fontSize = 13.sp)
+        Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("알림",fontWeight=FontWeight.Bold)
+                Text(if(vm.pushConfigured)
+                    "업무 결과·인증 요청·PC 메시지 알림을 휴대폰에서 받을 수 있습니다."
+                    else "Firebase 프로젝트 설정이 필요합니다. 지금은 앱 안에서 업무 상태를 조회할 수 있습니다.",
+                    color=Secondary,fontSize=13.sp)
+                if(vm.pushConfigured) Button(
+                    onClick={
+                        if(vm.pushEnabled)vm.disablePush()
+                        else if(android.os.Build.VERSION.SDK_INT>=33&&
+                            ContextCompat.checkSelfPermission(context,
+                                Manifest.permission.POST_NOTIFICATIONS)!=
+                                    PackageManager.PERMISSION_GRANTED)
+                            pushPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        else vm.enablePush()
+                    },
+                    enabled=!vm.pushBusy
+                ){Text(if(vm.pushBusy)"처리 중…" else if(vm.pushEnabled)"알림 끄기" else "알림 켜기")}
+            }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
             Column(Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
