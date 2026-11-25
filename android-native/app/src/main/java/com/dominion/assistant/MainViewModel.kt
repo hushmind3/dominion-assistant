@@ -281,7 +281,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (account?.id != current.id) return@launch
                 val proposal = AssistantTaskIntent.parse(response)
                 val answer: String = when (proposal) {
-                    is AssistantIntent.Browser, is AssistantIntent.Google -> {
+                    is AssistantIntent.Browser, is AssistantIntent.Google,
+                    is AssistantIntent.MailWatch -> {
                         val errand = PreparedErrand(
                             java.util.UUID.randomUUID().toString(),
                             proposal, System.currentTimeMillis()
@@ -340,15 +341,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         repository.browser(current, intent.url, intent.goal, draft.id)
                     is AssistantIntent.Google ->
                         repository.google(current, intent.operation, draft.id)
+                    is AssistantIntent.MailWatch ->
+                        repository.startMail(current,
+                            MailFilter(intent.mode,intent.sender,intent.keyword))
                     else -> throw IllegalArgumentException("지원하지 않는 심부름입니다.")
                 }
                 withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
                 if (account?.id == current.id) {
                     pendingErrands = pendingErrands.filterNot { it.id == id }
-                    val note = "심부름을 접수했어요. 진행 상태를 확인해 알려드릴게요."
+                    val note = if (draft.intent is AssistantIntent.MailWatch)
+                        "메일 알림을 설정했어요." else
+                        "심부름을 접수했어요. 진행 상태는 대화창에서 확인할 수 있어요."
                     withContext(Dispatchers.IO) { history.append(current.id, "assistant", note) }
                     messages = messages + ChatLine("assistant", note, System.currentTimeMillis())
-                    refreshJobs()
+                    if (draft.intent is AssistantIntent.MailWatch) refreshMail()
+                    else refreshJobs()
                 }
             } catch (e: Exception) {
                 if (account?.id == current.id) {
@@ -381,10 +388,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sendingErrandId = id
         viewModelScope.launch {
             try {
-                val latest = repository.jobs(current)
+                val verified = if (draft.intent is AssistantIntent.MailWatch) {
+                    val status = repository.mailStatus(current)
+                    val filter = draft.intent
+                    status.enabled && status.filters.mode == filter.mode &&
+                        status.filters.sender == filter.sender &&
+                        status.filters.keyword == filter.keyword
+                } else {
+                    val latest = repository.jobs(current)
+                    if (account?.id == current.id) jobs = latest
+                    latest.any { it.id == draft.id }
+                }
                 if (account?.id != current.id) return@launch
-                jobs = latest
-                if (latest.any { it.id == draft.id }) {
+                if (verified) {
                     withContext(Dispatchers.IO) { history.deleteErrand(current.id, draft.id) }
                     pendingErrands = pendingErrands.filterNot { it.id == id }
                 } else {
