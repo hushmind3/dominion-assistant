@@ -13,6 +13,7 @@ import com.dominion.assistant.data.AccountVault
 import com.dominion.assistant.data.CloudRelay
 import io.livekit.android.LiveKit
 import io.livekit.android.events.RoomEvent
+import io.livekit.android.events.collect
 import io.livekit.android.room.Room
 import com.twilio.audioswitch.AudioDevice
 import kotlinx.coroutines.*
