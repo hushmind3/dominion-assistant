@@ -60,7 +60,7 @@ class DominionRecognitionService : RecognitionService() {
                         callback.partialResults(partialResults ?: Bundle())
                     }
                     override fun onEvent(eventType: Int, params: Bundle?) {
-                        callback.event(eventType, params ?: Bundle())
+                        // RecognitionService.Callback exposes no event passthrough.
                     }
                 })
                 speech.startListening(intent)
