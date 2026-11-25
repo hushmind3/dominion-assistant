@@ -308,10 +308,13 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity) {
             }.getOrDefault(false)
         }
     }
-    val micPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) requestPc?.let(launchCall)
+    val permissionRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val microphoneGranted = result[Manifest.permission.RECORD_AUDIO] == true ||
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (microphoneGranted) requestPc?.let(launchCall)
         requestPc = null
     }
     Column(
@@ -380,12 +383,22 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity) {
                         Button(
                             enabled = pc.online && !vm.voiceBusy,
                             onClick = {
+                                val needed = mutableListOf<String>()
                                 if (ContextCompat.checkSelfPermission(activity,
-                                        Manifest.permission.RECORD_AUDIO) ==
-                                    PackageManager.PERMISSION_GRANTED) launchCall(pc)
+                                        Manifest.permission.RECORD_AUDIO) !=
+                                    PackageManager.PERMISSION_GRANTED) {
+                                    needed.add(Manifest.permission.RECORD_AUDIO)
+                                }
+                                if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                                    ContextCompat.checkSelfPermission(activity,
+                                        Manifest.permission.POST_NOTIFICATIONS) !=
+                                    PackageManager.PERMISSION_GRANTED) {
+                                    needed.add(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                                if (needed.isEmpty()) launchCall(pc)
                                 else {
                                     requestPc = pc
-                                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    permissionRequest.launch(needed.toTypedArray())
                                 }
                             }
                         ) { Text("전화 걸기") }
