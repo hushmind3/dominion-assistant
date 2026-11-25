@@ -97,10 +97,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                 Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(38.dp).background(Panel, CircleShape),
-                    contentAlignment = Alignment.Center) {
-                    Text(avatarGlyph(vm.profile.avatar), color = Accent, fontSize = 26.sp)
-                }
+                AssistantAvatarView(vm.profile,38.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("DOMINION Assistant", fontWeight = FontWeight.Bold, fontSize = 19.sp)
