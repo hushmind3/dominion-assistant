@@ -22,6 +22,8 @@ import com.dominion.assistant.data.PcTurn
 import com.dominion.assistant.data.InboxMessage
 import com.dominion.assistant.data.WorkSection
 import com.dominion.assistant.push.NativePush
+import com.dominion.assistant.reminder.NativeReminders
+import com.dominion.assistant.reminder.LocalReminder
 import com.dominion.assistant.voice.VoicePairing
 import com.dominion.assistant.voice.voiceId
 import com.dominion.assistant.voice.VoiceCallState
@@ -39,6 +41,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val history = ConversationStore(application)
     private val repository = AssistantRepository()
     private val notifications = NativePush(application)
+    private val localReminders = NativeReminders(application)
     private var pairingJob: Job? = null
 
     var account by mutableStateOf<Account?>(null)
@@ -56,6 +59,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var profile by mutableStateOf(AssistantProfile())
         private set
     var profileBusy by mutableStateOf(false)
+        private set
+    var reminders by mutableStateOf<List<LocalReminder>>(emptyList())
+        private set
+    var reminderBusy by mutableStateOf(false)
         private set
     var models by mutableStateOf<List<String>>(emptyList())
         private set
@@ -124,6 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshPcs()
         refreshInbox()
         refreshWorkUi()
+        refreshReminders()
     }
 
     fun clearError() { error = "" }
@@ -162,6 +170,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         account = null
         messages = emptyList()
         profile = AssistantProfile()
+        reminders = emptyList()
         pushEnabled = false
         jobs = emptyList()
         pcs = emptyList()
@@ -267,6 +276,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 error = "PC 프로필 반영 실패: " + (e.message ?: "네트워크 오류")
             } finally { profileBusy = false }
+        }
+    }
+
+    fun refreshReminders() {
+        val current=account ?: return
+        viewModelScope.launch {
+            try {
+                val list=localReminders.list(current.id)
+                if(account?.id==current.id)reminders=list
+            }catch(e:Exception){
+                if(account?.id==current.id)
+                    error=e.message?:"예약 알림을 확인하지 못했습니다."
+            }
+        }
+    }
+
+    fun scheduleReminder(title:String,dueAt:Long,onSaved:()->Unit={}) {
+        val current=account ?: return
+        if(reminderBusy)return
+        reminderBusy=true
+        viewModelScope.launch {
+            try {
+                localReminders.schedule(current.id,title,dueAt)
+                if(account?.id==current.id){
+                    onSaved()
+                    refreshReminders()
+                }
+            }catch(e:Exception){
+                if(account?.id==current.id)
+                    error=e.message?:"예약 알림을 저장하지 못했습니다."
+            }finally{reminderBusy=false}
+        }
+    }
+
+    fun cancelReminder(id:String) {
+        val current=account ?: return
+        if(reminderBusy)return
+        reminderBusy=true
+        viewModelScope.launch {
+            try {
+                localReminders.cancel(current.id,id)
+                if(account?.id==current.id)refreshReminders()
+            }catch(e:Exception){
+                if(account?.id==current.id)
+                    error=e.message?:"예약 알림 취소에 실패했습니다."
+            }finally{reminderBusy=false}
         }
     }
 
