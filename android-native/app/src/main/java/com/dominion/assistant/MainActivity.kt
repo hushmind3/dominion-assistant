@@ -364,6 +364,9 @@ private fun CallScreen(vm: MainViewModel, activity: ComponentActivity, voice: Na
                         OutlinedButton(onClick = {
                             VoiceCallService.command(activity, VoiceCallService.MUTE)
                         }) { Text(if (state.muted) "마이크 켜기" else "음소거") }
+                        OutlinedButton(onClick = {
+                            VoiceCallService.command(activity, VoiceCallService.SPEAKER)
+                        }) { Text(if (state.speakerForced) "자동 출력" else "스피커") }
                         Button(onClick = {
                             VoiceCallService.command(activity, VoiceCallService.STOP)
                         }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB64D40))) {
