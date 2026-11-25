@@ -1,12 +1,16 @@
 package com.dominion.assistant
 
 import androidx.compose.foundation.layout.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,6 +38,21 @@ fun ProfileEditor(vm: MainViewModel) {
         mutableStateOf(vm.profile.notes.joinToString("\n"))
     }
     var avatar by rememberSaveable(accountId) { mutableStateOf(vm.profile.avatar) }
+    var photo by rememberSaveable(accountId) { mutableStateOf(vm.profile.photo) }
+    var photoError by remember { mutableStateOf("") }
+    val context=LocalContext.current
+    val scope=rememberCoroutineScope()
+    val choosePhoto=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null)scope.launch {
+            try {
+                photo=ProfilePhoto.import(context,uri)
+                photoError=""
+                saved=false
+            }catch(e:Exception){
+                photoError=e.message?:"사진을 가져올 수 없습니다."
+            }
+        }
+    }
     var saved by remember(accountId) { mutableStateOf(false) }
     var pcConfirm by remember { mutableStateOf(false) }
     val selectedPc = vm.pcs.firstOrNull { it.id == vm.selectedPcId && it.online }
@@ -43,12 +62,23 @@ fun ProfileEditor(vm: MainViewModel) {
             Text("나의 AI 비서",fontWeight=FontWeight.Bold,fontSize=19.sp)
             Text("비서 이름, 말투, 언어, 기억 메모는 이 기기에 계정별로 보관합니다.",
                 color=Color(0xFFB8D2C0),fontSize=12.sp)
+            AssistantAvatarView(
+                vm.profile.copy(avatar=avatar,photo=photo),74.dp
+            )
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick={
+                    choosePhoto.launch(arrayOf("image/jpeg","image/png","image/webp"))
+                }){Text("사진 선택")}
+                if(photo!=null)TextButton(onClick={photo=null;saved=false}){Text("사진 지우기")}
+            }
+            if(photoError.isNotBlank())Text(photoError,
+                color=MaterialTheme.colorScheme.error,fontSize=12.sp)
             Text("비서 아이콘",fontSize=13.sp)
             LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 items(avatars) { option ->
                     FilterChip(
                         selected=avatar==option.first,
-                        onClick={avatar=option.first; saved=false},
+                        onClick={avatar=option.first;photo=null;saved=false},
                         label={Text(option.second+" "+option.third)}
                     )
                 }
@@ -72,7 +102,7 @@ fun ProfileEditor(vm: MainViewModel) {
                 vm.saveProfile(AssistantProfile(
                     name=name,style=style,language=language,
                     notes=notes.lines().map{it.trim()}.filter{it.isNotEmpty()},
-                    avatar=avatar
+                    avatar=avatar,photo=photo
                 )){saved=true}
             },modifier=Modifier.fillMaxWidth()){
                 Text(if(vm.profileBusy)"저장 중…" else "비서 설정 저장")
