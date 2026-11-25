@@ -37,4 +37,5 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
