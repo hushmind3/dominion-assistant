@@ -93,8 +93,7 @@ fun PcWorkPanel(vm:MainViewModel) {
    "\n\n업무 전송 후 실제 실행이 시작될 수 있습니다.")},
   confirmButton={TextButton(onClick={
    confirmPc=null
-   vm.sendPcWork(pc,instruction)
-   instruction=""
+   vm.sendPcWork(pc,instruction){instruction=""}
   }){Text("전송")}},
   dismissButton={TextButton(onClick={confirmPc=null}){Text("취소")}})
  val pair=cancelTurn
