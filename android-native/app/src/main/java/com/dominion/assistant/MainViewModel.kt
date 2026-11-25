@@ -21,6 +21,10 @@ import com.dominion.assistant.data.RemotePc
 import com.dominion.assistant.data.PcTurn
 import com.dominion.assistant.data.InboxMessage
 import com.dominion.assistant.data.WorkSection
+import com.dominion.assistant.data.MailFilter
+import com.dominion.assistant.data.MailStatus
+import com.dominion.assistant.data.MailAlert
+import com.dominion.assistant.data.SearchSource
 import com.dominion.assistant.push.NativePush
 import com.dominion.assistant.reminder.NativeReminders
 import com.dominion.assistant.reminder.LocalReminder
@@ -63,6 +67,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var reminders by mutableStateOf<List<LocalReminder>>(emptyList())
         private set
     var reminderBusy by mutableStateOf(false)
+        private set
+    var mailStatus by mutableStateOf(MailStatus())
+        private set
+    var mailAlerts by mutableStateOf<List<MailAlert>>(emptyList())
+        private set
+    var mailAvailable by mutableStateOf(true)
+        private set
+    var mailBusy by mutableStateOf(false)
+        private set
+    var searchBusy by mutableStateOf(false)
+        private set
+    var searchResults by mutableStateOf<List<SearchSource>>(emptyList())
+        private set
+    var searchError by mutableStateOf("")
         private set
     var models by mutableStateOf<List<String>>(emptyList())
         private set
@@ -143,6 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshInbox()
         refreshWorkUi()
         refreshReminders()
+        refreshMail()
     }
 
     fun clearError() { error = "" }
@@ -182,6 +201,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         messages = emptyList()
         profile = AssistantProfile()
         reminders = emptyList()
+        mailStatus = MailStatus()
+        mailAlerts = emptyList()
+        searchResults = emptyList()
+        searchError = ""
         pushEnabled = false
         jobs = emptyList()
         pcs = emptyList()
@@ -333,6 +356,94 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if(account?.id==current.id)
                     error=e.message?:"예약 알림 취소에 실패했습니다."
             }finally{reminderBusy=false}
+        }
+    }
+
+    fun refreshMail() {
+        val current=account?:return
+        viewModelScope.launch {
+            try {
+                val state=repository.mailStatus(current)
+                val alerts=repository.mailAlerts(current)
+                if(account?.id==current.id) {
+                    mailStatus=state
+                    mailAlerts=alerts
+                    mailAvailable=true
+                }
+            }catch(e:CloudError) {
+                if(account?.id==current.id && e.statusCode in setOf(404,503)) {
+                    mailAvailable=false
+                    mailStatus=MailStatus()
+                } else if(account?.id==current.id) error=e.message?:"메일 연결 오류"
+            }catch(e:Exception) {
+                if(account?.id==current.id)error=e.message?:"메일 연결 오류"
+            }
+        }
+    }
+
+    fun startMail(filter:MailFilter) {
+        val current=account?:return
+        if(mailBusy)return
+        mailBusy=true
+        viewModelScope.launch {
+            try{
+                repository.startMail(current,filter)
+                refreshMail()
+            }catch(e:Exception){error=e.message?:"메일 감시를 시작하지 못했습니다."}
+            finally{mailBusy=false}
+        }
+    }
+
+    fun stopMail() {
+        val current=account?:return
+        if(mailBusy)return
+        mailBusy=true
+        viewModelScope.launch {
+            try{repository.stopMail(current);refreshMail()}
+            catch(e:Exception){error=e.message?:"메일 감시를 중지하지 못했습니다."}
+            finally{mailBusy=false}
+        }
+    }
+
+    fun checkMail() {
+        val current=account?:return
+        if(mailBusy)return
+        mailBusy=true
+        viewModelScope.launch {
+            try{
+                repository.checkMail(current)
+                refreshMail()
+            }catch(e:Exception){error=e.message?:"메일 감시 확인 실패"}
+            finally{mailBusy=false}
+        }
+    }
+
+    fun clearMailAlerts() {
+        val current=account?:return
+        if(mailBusy)return
+        mailBusy=true
+        viewModelScope.launch {
+            try{repository.clearMailAlerts(current);refreshMail()}
+            catch(e:Exception){error=e.message?:"메일 알림 기록 삭제 실패"}
+            finally{mailBusy=false}
+        }
+    }
+
+    fun searchWeb(query:String) {
+        val current=account?:return
+        if(searchBusy)return
+        searchBusy=true
+        searchError=""
+        viewModelScope.launch {
+            try{
+                val sources=repository.searchWeb(current,query)
+                if(account?.id==current.id)searchResults=sources
+            }catch(e:Exception){
+                if(account?.id==current.id){
+                    searchResults=emptyList()
+                    searchError=e.message?:"검색 요청에 실패했습니다."
+                }
+            }finally{searchBusy=false}
         }
     }
 
