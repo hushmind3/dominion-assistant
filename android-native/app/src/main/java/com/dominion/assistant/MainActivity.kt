@@ -48,7 +48,17 @@ private val Accent = Color(0xFFB5E4BE)
 private val Secondary = Color(0xFFB8D2C0)
 
 class MainActivity : ComponentActivity() {
+    var openVoiceEvent by mutableIntStateOf(0)
+        private set
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("dominion_open_voice",false)) openVoiceEvent++
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (intent?.getBooleanExtra("dominion_open_voice",false)==true) openVoiceEvent++
         super.onCreate(savedInstanceState)
         val state = ViewModelProvider(this)[MainViewModel::class.java]
         setContent {
@@ -69,6 +79,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: ComponentActivity) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(activity.openVoiceEvent) {
+        if (activity.openVoiceEvent>0) tab=2
+    }
     var showSignOut by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = Forest,
