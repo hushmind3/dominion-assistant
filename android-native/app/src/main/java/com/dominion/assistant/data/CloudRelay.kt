@@ -10,12 +10,29 @@ import java.util.concurrent.TimeUnit
 /** One authenticated RPC; no automatic replay of uncertain side effects. */
 class CloudRelay {
  suspend fun voiceCommand(account:Account,deviceId:String,action:String,voiceId:String):JSONObject {
-  require(UUID.fromString(deviceId).toString()==deviceId&&UUID.fromString(voiceId).toString()==voiceId)
   require(action=="start"||action=="stop")
+  require(UUID.fromString(voiceId).toString()==voiceId)
+  return request(account,deviceId,"voice/"+action,
+    JSONObject().put("voiceId",voiceId).apply{if(action=="start")put("confirmed",true)})
+ }
+
+ /**
+  * The PC authorizes each request. No retries: a connection failure may happen
+  * after execution. Callers should refresh durable history before resubmitting.
+  */
+ suspend fun request(account:Account,deviceId:String,route:String,body:JSONObject?=null):JSONObject {
+  require(UUID.fromString(deviceId).toString()==deviceId)
+  require(route in setOf("history","send","cancel","phone","voice/start","voice/stop"))
+  require((route=="history"||route=="phone")==(body==null))
+  if(route=="send") {
+   val text=body!!.optString("text")
+   require(body.optString("kind")=="task"&&text.isNotBlank()&&text.length<=4000)
+   require(UUID.fromString(body.getString("clientId")).toString()==body.getString("clientId"))
+  }
+  if(route=="cancel")require(UUID.fromString(body!!.getString("requestId")).toString()==body.getString("requestId"))
   val id=UUID.randomUUID().toString()
   val payload=JSONObject().put("type","rpc").put("id",id).put("deviceId",deviceId)
-   .put("route","voice/"+action).put("body",JSONObject().put("voiceId",voiceId)
-    .apply{if(action=="start")put("confirmed",true)})
+   .put("route",route).put("body",body?:JSONObject.NULL)
   val result=CompletableDeferred<JSONObject>()
   val client=OkHttpClient.Builder().connectTimeout(12,TimeUnit.SECONDS)
    .readTimeout(0,TimeUnit.MILLISECONDS).pingInterval(20,TimeUnit.SECONDS).build()
