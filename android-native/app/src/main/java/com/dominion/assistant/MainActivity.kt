@@ -140,7 +140,7 @@ private fun DominionScreen(vm: MainViewModel, voice: NativeVoice, activity: Main
                 }
             } else {
                 when (tab) {
-                    0 -> ChatScreen(vm, voice)
+                    0 -> ChatTabs(vm, voice)
                     1 -> WorkScreen(vm, open = { url ->
                         activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     })
@@ -198,6 +198,28 @@ private fun LoginScreen(vm: MainViewModel, open: (String) -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text("기존 DOMINION Cloud 계정을 사용합니다.\n별도 AI 공급자 키는 휴대폰에 저장하지 않습니다.",
             color = Secondary, fontSize = 12.sp, lineHeight = 19.sp)
+    }
+}
+
+@Composable
+private fun ChatTabs(vm: MainViewModel, voice: NativeVoice) {
+    var pcMode by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !pcMode, onClick = { pcMode = false },
+                label = { Text("AI 대화") })
+            FilterChip(selected = pcMode, onClick = {
+                pcMode = true
+                vm.refreshPcs()
+                val pc = vm.pcs.firstOrNull { it.id == vm.selectedPcId && it.online }
+                    ?: vm.pcs.firstOrNull { it.online }
+                if (pc != null) vm.refreshPcWork(pc)
+            }, label = { Text("PC 업무·대화") })
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (pcMode) PcChatScreen(vm) else ChatScreen(vm, voice)
+        }
     }
 }
 
